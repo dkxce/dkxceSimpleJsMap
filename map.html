@@ -14,38 +14,80 @@
 	  .marker-2d { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; z-index: 10; }
 	  .marker-2d__label { background: rgba(0,0,0,0.95); color: #eee; font: 600 12px/1.4 system-ui, sans-serif; padding: 3px 8px; border-radius: 4px; box-shadow: 0 1px 4px rgba(255,255,255,0.25); white-space: nowrap; text-align: center; border: 1px solid rgba(0,0,0,0.1); }
 	  .marker-2d__dot { width: 18px; height: 18px; background: #e53935; border: 5px solid #000; border-radius: 50%; box-shadow: 0 3px 4px rgba(0,0,0,0.65); }  	  
-	  .attribution { position: absolute; bottom: 4px; right: 6px; z-index: 10; font: 11px/1.2 system-ui, sans-serif; color: #555; background: rgba(255,255,255,0.85); padding: 2px 5px; border-radius: 3px; pointer-events: none; }
+	  .attribution { position: absolute; bottom: 4px; right: 6px; z-index: 11; font: 11px/1.2 system-ui, sans-serif; color: #555; background: rgba(255,255,255,0.85); padding: 2px 5px; border-radius: 3px; pointer-events: none; }
+	  
+	  .zoom-switcher { position: absolute; top: 10px; left: 10px; z-index: 12; background: rgba(255, 255, 255, 0.95); border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); overflow: hidden; font-family: system-ui, sans-serif; }
+	  .zoom-switcher button { display: block; width: 100%; padding: 2px 10px; border: none; background: #fff; cursor: pointer; font: 600 13px system-ui, sans-serif; color: #333; transition: background 0.15s, color 0.15s; }
+	  .zoom-switcher button:hover { background: #f0f4f8; }
+	  
+	  .provider-switcher { position: absolute; top: 10px; right: 10px; z-index: 12; background: rgba(255, 255, 255, 0.95); border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); overflow: hidden; font-family: system-ui, sans-serif; }
+	  .provider-switcher button { display: block; width: 100%; padding: 2px 10px; border: none; background: #fff; cursor: pointer; font: 600 13px system-ui, sans-serif; color: #333; transition: background 0.15s, color 0.15s; }
+	  .provider-switcher button:hover { background: #f0f4f8; }
+	  .provider-switcher button.active { background: #4a90d9; color: #fff; }
+	  .provider-switcher button + button { border-top: 1px solid #e0e0e0; }
 	</style>
 </head>
 <body>
 	<div id="map-container">
-		<div class="attribution" id="attribution"></div>
+		<div class="zoom-switcher" id="zoom-switcher"></div>
+		<div class="provider-switcher" id="provider-switcher"></div>
+		<div class="attribution" id="attribution"></div>		
 	</div>
 </body>
 
 <script>
 
-/* // https://github.com/dkxce // */
+/* // https://github.com/dkxce/dkxceSimpleJsMap // */
+
+const TILE_PROVIDERS = {
+  OSM: 		 	{name: 'OSM', url: 'https://{s}.tile.osm.org/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OSM'},
+  OSMGerman: 	{name: 'OSM German', url: 'http://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OSM'},
+  OSMHot: 		{name: 'OSM Hot', url: 'http://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OSM'},
+  OpenTopoMap: 	{name: 'OpenTopoMap', url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OpenTopoMap'},
+  CycleMap: 	{name: 'CycleMap', url: 'https://{s}.tile.hosted.thunderforest.com/cycle/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © CycleMap'},
+  MTBMap: 		{name: 'MTBMap', url: 'https://tile.mtbmap.cz/mtbmap_tiles/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © MTBMap'},
+  Google: 		{name: 'Google', url: 'http://{s}.google.com/vt/lyrs=m@177000000&hl=ru&src=app&x={x}&s=&y={y}&z={z}&s=Ga', subdomains: ['mts0','mts1'], attr: 'Tiles by © Google'},
+  DblGIS: 		{name: '2GIS', url: 'https://tile{s}.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1.1', subdomains: ['0','1','2','3'], attr: 'Tiles by © 2GIS'},
+  Yandex: 		{name: 'Yandex', url: 'https://core-renderer-tiles.maps.yandex.net/tiles?l=map&v=4.41.0&z={z}&x={x}&y={y}&scale=1&lang=ru_RU', ellipse: true, attr: 'Tiles by © Yandex'},
+  YandexSat: 	{name: 'Yandex Sat', url: 'http://{s}.maps.yandex.net/tiles?l=sat&v=1.35.0&x={x}&s=&y={y}&z={z}&lang=ru-RU', subdomains: ['sat01','sat02','sat03','sat04'], ellipse: true, attr: 'Tiles by © Yandex'},
+  ESRI: 		{name: 'ESRI', url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}.png', attr: 'Tiles by © ESRI'},
+  ESRISat: 		{name: 'ESRI Sat', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}.png', attr: 'Tiles by © ESRI'},
+  ScanEx: 		{name: 'ScanEx', url: 'http://maps.kosmosnimki.ru/TileService.ashx?Request=gettile&LayerName=04C9E7CE82C34172910ACDBF8F1DF49A&apikey=7BDJ6RRTHH&crs=epsg:3857&z={z}&x={x}&y={y}', attr: 'Tiles by © ScanEx'},  
+};
 
 class SimpleTileMap {
 
   constructor(container, options = {}) {
+  
     this.container = typeof container === 'string' ? document.querySelector(container) : container;
     if (!this.container) throw new Error('Контейнер карты не найден');
 
-    // Параметры //
+    // Параметры карты //
     this.lat = options.lat ?? 55.89;
     this.lon = options.lon ?? 37.69;
     this.zoom = options.zoom ?? 12;
-    this.markerText = options.markerText ?? 'MARKER';
-    this.tileSize = 256;
-    this.minZoom = 3;
-    this.maxZoom = 19;
+    this.markerText = options.markerText ?? 'MARKER';    
     this.subdomains = Array.isArray(options.subdomains) ? options.subdomains : ['a', 'b', 'c'];
-    this.tileUrl = options.tileUrl ?? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+    this.tileUrl = options.tileUrl ?? 'https://{s}.tile.osm.org/{z}/{x}/{y}.png'
+	this.attr = options.attr ?? 'Tiles by © OSM'
 	this.isEllipse = options.ellipse ?? false;
+	this.providerKey = options.provider ?? 'OSM';	
+	this.showZoomLevels = options.showZoomLevels ?? true;
+	this.showProviders = options.showProviders ?? false;
+	this.showMarker = options.showMarker ?? true;
+
+	// Константы //
+	this.tileSize = 256;
+    this.minZoom  = 3;
+    this.maxZoom  = 19;	
+	this.attrAddit = ' (Enjine by dkxce)';
 	
-	if (options.attr) document.getElementById('attribution').textContent = options.attr;
+	// Copyright //
+	if (this.attr) 
+	{
+		const el = document.getElementById('attribution')
+		if(el) el.textContent = this.attr + this.attrAddit;
+	};
 
     // Центр карты в "тайловых" координатах //
     this.viewX = this._lonToX(this.lon, this.zoom);
@@ -62,7 +104,15 @@ class SimpleTileMap {
 
     this._initLayers();
     this._bindEvents();
-    this.update();
+    this._initZoomSwitcher();
+    this._initProviderSwitcher();
+	
+	if (this.providerKey == 'OSM') {
+		this._activateTileProvider();
+		this.update();	
+	} else  {
+		this.setTileProvider(this.providerKey);
+	}
   }
 
   // Вспомогательные методы //
@@ -70,6 +120,39 @@ class SimpleTileMap {
     if (!this.subdomains || this.subdomains.length === 0) return '';
     const idx = Math.floor(Math.random() * this.subdomains.length);
     return this.subdomains[idx];
+  }
+  
+  _initZoomSwitcher() {
+	if (!this.showZoomLevels) return;
+	
+    const switcher = document.getElementById('zoom-switcher');
+    if (!switcher) return;
+    switcher.innerHTML = '';
+    
+	const btnIn = document.createElement('button');
+      btnIn.textContent = '+';
+      btnIn.onclick = () => this.setZoomInOut(+1);
+      switcher.appendChild(btnIn);
+	const btnOut = document.createElement('button');
+      btnOut.textContent = '-';
+      btnOut.onclick = () => this.setZoomInOut(-1);
+      switcher.appendChild(btnOut);
+  }
+  
+  _initProviderSwitcher() {
+	if (!this.showProviders) return;
+	
+    const switcher = document.getElementById('provider-switcher');
+    if (!switcher) return;
+    switcher.innerHTML = '';
+
+	Object.keys(TILE_PROVIDERS).forEach(key => {
+      const btn = document.createElement('button');
+      btn.textContent = TILE_PROVIDERS[key].name;
+      btn.className = key === this.providerKey ? 'active' : '';
+      btn.onclick = () => this.setTileProvider(key);
+      switcher.appendChild(btn);
+    });
   }
 
   _buildTileUrl(z, x, y) {
@@ -152,6 +235,37 @@ class SimpleTileMap {
 		return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * (1 << z);
 	};
   }
+   
+   // Установка провайдера тайлов //
+  _setProvider(config) {
+	this.subdomains = config.subdomains;
+    this.tileUrl = config.url;    
+    this.attr = config.attr;
+    this.isEllipse = config.ellipse ?? false;	
+    const attrEl = document.getElementById('attribution');
+    if (attrEl) attrEl.textContent = this.attr + this.attrAddit;
+  }
+  
+  // Активация провайдера на селекторе //
+  _activateTileProvider(key) {  
+    if (!this.showProviders) return;
+	
+	if(key === undefined) 
+		Object.keys(TILE_PROVIDERS).forEach(el => {
+			if (TILE_PROVIDERS[el].url == this.tileUrl) {
+				key = el; 
+			};
+		});
+	if(key === undefined) return;
+	
+	const switcher = document.getElementById('provider-switcher');
+    if (switcher) {
+      Array.from(switcher.children).forEach((btn, i) => {
+        const keys = Object.keys(TILE_PROVIDERS);
+        btn.classList.toggle('active', keys[i] === key);
+      });
+    }
+  }
 
   // Рендер тайлов //
   renderTiles() {
@@ -204,6 +318,8 @@ class SimpleTileMap {
 
   // Размещение маркера //
   placeMarker() {
+	if(!this.showMarker) return;
+	
     this.markerLayer.innerHTML = '';
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
@@ -235,7 +351,7 @@ class SimpleTileMap {
     this.markerLayer.appendChild(el);
   }
 
-  // public /
+  // Публичные методы /
   update() {
     this.renderTiles();
     this.placeMarker();
@@ -257,11 +373,36 @@ class SimpleTileMap {
 
   setTileUrl(url) {
     this.tileUrl = url;
+	this._activateTileProvider();
     this.update();
   }
 
+  setTileProvider(key) {	  
+	const config = TILE_PROVIDERS[key];
+	if (config == undefined) return;
+	
+	var ellipse = this.isEllipse;
+    this._setProvider(config);
+    this._activateTileProvider(key);
+    if (ellipse != this.isEllipse) {
+		this.setCenter(this.lat,this.lon);
+	} else {
+		this.update();
+	};
+  } 
+
   setSubdomains(list) {
     this.subdomains = Array.isArray(list) ? list : [];
+    this.update();
+  }
+
+  setZoomInOut(delta) {
+	const oldZ = this.viewZ;
+    this.viewZ = Math.max(this.minZoom, Math.min(this.maxZoom, oldZ + delta));
+    if (this.viewZ === oldZ) return;
+    const scale = Math.pow(2, this.viewZ - oldZ);
+    this.viewX = this.viewX * scale;
+    this.viewY = this.viewY * scale;
     this.update();
   }
 
@@ -316,31 +457,23 @@ class SimpleTileMap {
 // Test: ?lat=55.89&lon=37.69&zoom=13&text=SVA6IDIxNy4xNS4xMzUuMTA3  //
 
 const params = new URLSearchParams(window.location.search);
-var lt = 57.616670,ln = 39.85, zoom = 12, text = 'Ярославль';
+var lt = 0,ln = 0, zoom = 12, text = '(*)';
 try { lt = parseFloat(params.get('lat') ?? 57.616670);} catch (e) {};
 try { ln = parseFloat(params.get('lon') ?? 39.85); } catch (e) {};
 try { zoom = parseInt(params.get('zoom') ?? 12); } catch (e) {};
 try { text = atob(params.get('text') ?? ''); if (text.length == 0) text = 'Ярославль'; } catch (e) {};
+try { provider = params.get('provider') ?? 'DblGIS'; } catch (e) {};
 
 const map = new SimpleTileMap('#map-container', 
 {
-  lat: lt,
-  lon: ln, 
-  zoom: zoom,
-  markerText: text,
-  //tileUrl: 'https://{s}.tile.osm.org/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OSM', // OSM
-  //tileUrl: 'http://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OSM', // OSM German
-  //tileUrl: 'http://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OSM', // OSM Hot
-  //tileUrl: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OpenTopoMap', // OpenTopoMap
-  //tileUrl: 'https://{s}.tile.hosted.thunderforest.com/cycle/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © CycleMap', // CycleMap
-  //tileUrl: 'https://tile.mtbmap.cz/mtbmap_tiles/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © mtbmap.cz', // MTBMap
-  //tileUrl: 'http://{s}.google.com/vt/lyrs=m@177000000&hl=ru&src=app&x={x}&s=&y={y}&z={z}&s=Ga', subdomains: ['mts0','mts1'], attr: 'Tiles by © Google', // Google
-  tileUrl: 'https://tile{s}.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1.1', subdomains: ['0','1','2','3'], attr: 'Tiles by © 2GIS', // 2GIS  
-  //tileUrl: 'https://core-renderer-tiles.maps.yandex.net/tiles?l=map&v=4.41.0&z={z}&x={x}&y={y}&scale=1&lang=ru_RU', ellipse: true, attr: 'Tiles by © Yandex', // Yandex  
-  //tileUrl: 'http://{s}.maps.yandex.net/tiles?l=sat&v=1.35.0&x={x}&s=&y={y}&z={z}&lang=ru-RU', subdomains: ['sat01','sat02','sat03','sat04'], ellipse: true, attr: 'Tiles by © Yandex', // Yandex Sat
-  //tileUrl: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}.png', attr: 'Tiles by © ESRI', // ESRI  
-  //tileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}.png', attr: 'Tiles by © ESRI', // ESRI Sat
-  //tileUrl: 'http://maps.kosmosnimki.ru/TileService.ashx?Request=gettile&LayerName=04C9E7CE82C34172910ACDBF8F1DF49A&apikey=7BDJ6RRTHH&crs=epsg:3857&z={z}&x={x}&y={y}', attr: 'Tiles by © ScanEx', // ScanEx 1
+	lat: lt,
+	lon: ln, 
+	zoom: zoom,
+	markerText: text,
+	showProviders: true,
+	showZoomLevels: true,
+	showMarker: true,
+	provider: provider,	
 });
 // setTimeout(() => map.setMarkerText('OBJECT A (UPDATED)'), 4000);
 
