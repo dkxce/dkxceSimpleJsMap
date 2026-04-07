@@ -34,8 +34,8 @@ class SimpleTileMap {
     if (!this.container) throw new Error('Контейнер карты не найден');
 
     // Параметры //
-    this.lat = options.lat ?? 55.45;
-    this.lon = options.lon ?? 37.39;
+    this.lat = options.lat ?? 55.89;
+    this.lon = options.lon ?? 37.69;
     this.zoom = options.zoom ?? 12;
     this.markerText = options.markerText ?? 'MARKER';
     this.tileSize = 256;
@@ -313,7 +313,7 @@ class SimpleTileMap {
 }
 
 /* ========================= Инициализация ========================= */
-// Test: ?lat=55.55&lon=37.55&zoom=13&text=SVA6IDIxNy4xNS4xMzUuMTA3  //
+// Test: ?lat=55.89&lon=37.69&zoom=13&text=SVA6IDIxNy4xNS4xMzUuMTA3  //
 
 const params = new URLSearchParams(window.location.search);
 var lt = 57.616670,ln = 39.85, zoom = 12, text = 'Ярославль';
