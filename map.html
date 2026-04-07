@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+	<meta charset="UTF-8">
+	<meta name="author" content="https://github.com/dkxce">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>dkxce simple tile map</title>
+	<style>
+	  * { margin: 0; padding: 0; box-sizing: border-box; }
+	  body { display: flex; justify-content: center; align-items: center; height: 100vh; background: #1a1a1a; font-family: system-ui, -apple-system, sans-serif; }
+	  #map-container { width:100%; height:100%; position: relative; overflow: hidden; border: 0px solid #444; background: #aaccee; cursor: grab; user-select: none; -webkit-user-select: none; transform: translate3d(0, 0, 0); backface-visibility: hidden; }	  
+
+	  .tile { position: absolute; pointer-events: none; will-change: left, top; image-rendering: -webkit-optimize-contrast; image-rendering: auto; -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-user-drag: none; -webkit-transition: none; -moz-transition: none; -o-transition: none; transition: none; }
+	  .marker-2d { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; z-index: 10; }
+	  .marker-2d__label { background: rgba(0,0,0,0.95); color: #eee; font: 600 12px/1.4 system-ui, sans-serif; padding: 3px 8px; border-radius: 4px; box-shadow: 0 1px 4px rgba(255,255,255,0.25); white-space: nowrap; text-align: center; border: 1px solid rgba(0,0,0,0.1); }
+	  .marker-2d__dot { width: 18px; height: 18px; background: #e53935; border: 5px solid #000; border-radius: 50%; box-shadow: 0 3px 4px rgba(0,0,0,0.65); }  	  
+	  .attribution { position: absolute; bottom: 4px; right: 6px; z-index: 10; font: 11px/1.2 system-ui, sans-serif; color: #555; background: rgba(255,255,255,0.85); padding: 2px 5px; border-radius: 3px; pointer-events: none; }
+	</style>
+</head>
+<body>
+	<div id="map-container">
+		<div class="attribution" id="attribution"></div>
+	</div>
+</body>
+
+<script>
+
+/* // https://github.com/dkxce // */
+
+class SimpleTileMap {
+
+  constructor(container, options = {}) {
+    this.container = typeof container === 'string' ? document.querySelector(container) : container;
+    if (!this.container) throw new Error('Контейнер карты не найден');
+
+    // Параметры //
+    this.lat = options.lat ?? 55.45;
+    this.lon = options.lon ?? 37.39;
+    this.zoom = options.zoom ?? 12;
+    this.markerText = options.markerText ?? 'MARKER';
+    this.tileSize = 256;
+    this.minZoom = 3;
+    this.maxZoom = 19;
+    this.subdomains = Array.isArray(options.subdomains) ? options.subdomains : ['a', 'b', 'c'];
+    this.tileUrl = options.tileUrl ?? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+	this.isEllipse = options.ellipse ?? false;
+	
+	if (options.attr) document.getElementById('attribution').textContent = options.attr;
+
+    // Центр карты в "тайловых" координатах //
+    this.viewX = this._lonToX(this.lon, this.zoom);
+    this.viewY = this._latToY(this.lat, this.zoom);
+    this.viewZ = this.zoom;
+
+    // Состояние драга //
+    this.isDragging = false;
+    this.dragStart = { x: 0, y: 0 };
+    this.dragView = { x: 0, y: 0 };
+
+    // Детект браузера для специфичных фиксов //
+    this._isFirefox = navigator.userAgent.includes('Firefox');
+
+    this._initLayers();
+    this._bindEvents();
+    this.update();
+  }
+
+  // Вспомогательные методы //
+  _getRandomSubdomain() {
+    if (!this.subdomains || this.subdomains.length === 0) return '';
+    const idx = Math.floor(Math.random() * this.subdomains.length);
+    return this.subdomains[idx];
+  }
+
+  _buildTileUrl(z, x, y) {
+    let url = this.tileUrl
+      .replace('{z}', z)
+      .replace('{x}', x)
+      .replace('{y}', y);
+    
+    if (url.includes('{s}') && this.subdomains?.length > 0) {
+      url = url.replace('{s}', this._getRandomSubdomain());
+    }
+    return url;
+  }
+
+  // Инициализация DOM //
+  _initLayers() {
+    this.tileLayer = document.createElement('div');
+    this.tileLayer.style.position = 'absolute';
+    this.tileLayer.style.top = '0';
+    this.tileLayer.style.left = '0';
+    
+    if (this._isFirefox) {
+      this.tileLayer.style.transform = 'translateZ(0)';
+      this.tileLayer.style.backfaceVisibility = 'hidden';
+    }
+    
+    this.container.appendChild(this.tileLayer);
+
+    this.markerLayer = document.createElement('div');
+    this.markerLayer.style.position = 'absolute';
+    this.markerLayer.style.top = '0';
+    this.markerLayer.style.left = '0';
+    this.markerLayer.style.zIndex = '10';
+    this.container.appendChild(this.markerLayer);
+  }
+
+  // Привязка событий //
+  _bindEvents() {
+    this._onMouseDown = this._onMouseDown.bind(this);
+    this._onMouseMove = this._onMouseMove.bind(this);
+    this._onMouseUp = this._onMouseUp.bind(this);
+    this._onWheel = this._onWheel.bind(this);
+
+    this.container.addEventListener('mousedown', this._onMouseDown);
+    window.addEventListener('mousemove', this._onMouseMove);
+    window.addEventListener('mouseup', this._onMouseUp);
+    this.container.addEventListener('wheel', this._onWheel, { passive: false });
+  }
+
+  // Проекция Web Mercator + Ellipse //
+  _lonToX(lon, z) { 
+	return (lon + 180) / 360 * (1 << z); 
+  }
+
+  _latToY(lat, z) {
+	if (this.isEllipse)
+	{
+		// EPSG:3395
+		const e = 0.0818191908426; // Эксцентриситет WGS-84
+		const latRad = lat * Math.PI / 180;
+		
+		const sinLat = Math.sin(latRad);
+		
+		// Вычисление изометрической широты для эллипсоида:
+		// ln( tan(pi/4 + lat/2) * ((1 - e*sin(lat)) / (1 + e*sin(lat)))^(e/2) )
+		const tanHalfPi = Math.tan(Math.PI / 4 + latRad / 2);
+		const ellipsoidCorrection = Math.pow((1 - e * sinLat) / (1 + e * sinLat), e / 2);
+		
+		const lnVal = Math.log(tanHalfPi * ellipsoidCorrection);
+		
+		// Нормализация в диапазон [0..1] (где 0 - Северный полюс, 1 - Южный)
+		const yNorm = 0.5 - lnVal / (2 * Math.PI);
+		
+		return yNorm * (1 << z);
+	}
+	else
+	{
+		//  EPSG:3857
+		const r = lat * Math.PI / 180;
+		return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * (1 << z);
+	};
+  }
+
+  // Рендер тайлов //
+  renderTiles() {
+    this.tileLayer.innerHTML = '';
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+
+    const countX = Math.ceil(w / this.tileSize) + 1;
+    const countY = Math.ceil(h / this.tileSize) + 1;
+    const halfX = countX / 2;
+    const halfY = countY / 2;
+
+    let minX = Math.max(Math.floor(this.viewX - halfX), 0);
+    let maxX = Math.min(Math.ceil(this.viewX + halfX), (1 << this.viewZ) - 1);
+    let minY = Math.max(Math.floor(this.viewY - halfY), 0);
+    let maxY = Math.min(Math.ceil(this.viewY + halfY), (1 << this.viewZ) - 1);
+
+    for (let tx = minX; tx <= maxX; tx++) {
+      for (let ty = minY; ty <= maxY; ty++) {
+        const img = document.createElement('img');
+        img.className = 'tile';
+        img.src = this._buildTileUrl(this.viewZ, tx, ty);
+        img.alt = '';
+        img.draggable = false;
+        
+        // Вычисляем позицию
+        const leftPx = (tx - this.viewX) * this.tileSize + w / 2;
+        const topPx = (ty - this.viewY) * this.tileSize + h / 2;
+        
+        // ФИКС: разное округление для разных браузеров
+        if (this._isFirefox) {
+          // Firefox: bitwise-округление гарантирует целочисленные координаты
+          img.style.left = (leftPx | 0) + 'px';
+          img.style.top  = (topPx | 0) + 'px';
+          // Дополнительный атрибут для старых версий Firefox
+          img.setAttribute('mozPreserveAspectRatio', 'none');
+        } else {
+          // Chromium/Safari: стандартное округление
+          img.style.left = Math.round(leftPx) + 'px';
+          img.style.top  = Math.round(topPx) + 'px';
+        }
+        
+        img.style.width = this.tileSize + 'px';
+        img.style.height = this.tileSize + 'px';
+        
+        this.tileLayer.appendChild(img);
+      }
+    }
+  }
+
+  // Размещение маркера //
+  placeMarker() {
+    this.markerLayer.innerHTML = '';
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+
+    // Та же формула смещения, что и у тайлов //
+    const dx = (this._lonToX(this.lon, this.viewZ) - this.viewX) * this.tileSize;
+    const dy = (this._latToY(this.lat, this.viewZ) - this.viewY) * this.tileSize;
+
+    const px = w / 2 + dx;
+    const py = h / 2 + dy;
+
+    // Не рендерим, если маркер далеко за пределами вьюпорта //
+    if (px < -50 || px > w + 50 || py < -80 || py > h + 20) return;
+
+    const el = document.createElement('div');
+    el.className = 'marker-2d';
+    el.style.left = px + 'px';
+    el.style.top  = py + 'px';
+
+    const label = document.createElement('div');
+    label.className = 'marker-2d__label';
+    label.textContent = this.markerText;
+
+    const dot = document.createElement('div');
+    dot.className = 'marker-2d__dot';
+
+    el.appendChild(label);
+    el.appendChild(dot);
+    this.markerLayer.appendChild(el);
+  }
+
+  // public /
+  update() {
+    this.renderTiles();
+    this.placeMarker();
+  }
+
+  setMarkerText(text) {
+    this.markerText = text;
+    this.placeMarker();
+  }
+
+  setCenter(lat, lon, zoom = this.viewZ) {
+    this.lat = lat;
+    this.lon = lon;
+    this.viewX = this._lonToX(this.lon, zoom);
+    this.viewY = this._latToY(this.lat, zoom);
+    this.viewZ = zoom;
+    this.update();
+  }
+
+  setTileUrl(url) {
+    this.tileUrl = url;
+    this.update();
+  }
+
+  setSubdomains(list) {
+    this.subdomains = Array.isArray(list) ? list : [];
+    this.update();
+  }
+
+  destroy() {
+    this.container.removeEventListener('mousedown', this._onMouseDown);
+    window.removeEventListener('mousemove', this._onMouseMove);
+    window.removeEventListener('mouseup', this._onMouseUp);
+    this.container.removeEventListener('wheel', this._onWheel);
+    this.tileLayer.remove();
+    this.markerLayer.remove();
+  }
+
+  // Обработчики событий//
+  _onMouseDown(e) {
+    this.isDragging = true;
+    this.dragStart = { x: e.clientX, y: e.clientY };
+    this.dragView = { x: this.viewX, y: this.viewY };
+  }
+
+  _onMouseMove(e) {
+    if (!this.isDragging) return;
+    this.viewX = this.dragView.x - (e.clientX - this.dragStart.x) / this.tileSize;
+    this.viewY = this.dragView.y - (e.clientY - this.dragStart.y) / this.tileSize;
+    this.update();
+  }
+
+  _onMouseUp() { this.isDragging = false; }
+
+  _onWheel(e) {
+    e.preventDefault();
+    const oldZ = this.viewZ;
+    const delta = e.deltaY < 0 ? 1 : -1;
+    this.viewZ = Math.max(this.minZoom, Math.min(this.maxZoom, oldZ + delta));
+    if (this.viewZ === oldZ) return;
+
+    const rect = this.container.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    const offX = (mx - rect.width / 2) / this.tileSize;
+    const offY = (my - rect.height / 2) / this.tileSize;
+
+    const scale = Math.pow(2, this.viewZ - oldZ);
+    this.viewX = (this.viewX + offX) * scale - offX;
+    this.viewY = (this.viewY + offY) * scale - offY;
+
+    this.update();
+  }
+}
+
+/* ========================= Инициализация ========================= */
+// Test: ?lat=55.55&lon=37.55&zoom=13&text=SVA6IDIxNy4xNS4xMzUuMTA3  //
+
+const params = new URLSearchParams(window.location.search);
+var lt = 57.616670,ln = 39.85, zoom = 12, text = 'Ярославль';
+try { lt = parseFloat(params.get('lat') ?? 57.616670);} catch (e) {};
+try { ln = parseFloat(params.get('lon') ?? 39.85); } catch (e) {};
+try { zoom = parseInt(params.get('zoom') ?? 12); } catch (e) {};
+try { text = atob(params.get('text') ?? ''); if (text.length == 0) text = 'Ярославль'; } catch (e) {};
+
+const map = new SimpleTileMap('#map-container', 
+{
+  lat: lt,
+  lon: ln, 
+  zoom: zoom,
+  markerText: text,
+  //tileUrl: 'https://{s}.tile.osm.org/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OSM', // OSM
+  //tileUrl: 'http://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OSM', // OSM German
+  //tileUrl: 'http://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OSM', // OSM Hot
+  //tileUrl: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OpenTopoMap', // OpenTopoMap
+  //tileUrl: 'https://{s}.tile.hosted.thunderforest.com/cycle/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © CycleMap', // CycleMap
+  //tileUrl: 'https://tile.mtbmap.cz/mtbmap_tiles/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © mtbmap.cz', // MTBMap
+  //tileUrl: 'http://{s}.google.com/vt/lyrs=m@177000000&hl=ru&src=app&x={x}&s=&y={y}&z={z}&s=Ga', subdomains: ['mts0','mts1'], attr: 'Tiles by © Google', // Google
+  tileUrl: 'https://tile{s}.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1.1', subdomains: ['0','1','2','3'], attr: 'Tiles by © 2GIS', // 2GIS  
+  //tileUrl: 'https://core-renderer-tiles.maps.yandex.net/tiles?l=map&v=4.41.0&z={z}&x={x}&y={y}&scale=1&lang=ru_RU', ellipse: true, attr: 'Tiles by © Yandex', // Yandex  
+  //tileUrl: 'http://{s}.maps.yandex.net/tiles?l=sat&v=1.35.0&x={x}&s=&y={y}&z={z}&lang=ru-RU', subdomains: ['sat01','sat02','sat03','sat04'], ellipse: true, attr: 'Tiles by © Yandex', // Yandex Sat
+  //tileUrl: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}.png', attr: 'Tiles by © ESRI', // ESRI  
+  //tileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}.png', attr: 'Tiles by © ESRI', // ESRI Sat
+  //tileUrl: 'http://maps.kosmosnimki.ru/TileService.ashx?Request=gettile&LayerName=04C9E7CE82C34172910ACDBF8F1DF49A&apikey=7BDJ6RRTHH&crs=epsg:3857&z={z}&x={x}&y={y}', attr: 'Tiles by © ScanEx', // ScanEx 1
+});
+// setTimeout(() => map.setMarkerText('OBJECT A (UPDATED)'), 4000);
+
+</script>
+</html>
