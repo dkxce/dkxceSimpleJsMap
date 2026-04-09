@@ -18,6 +18,7 @@
 		.marker-2d__label { background: rgba(0, 0, 0, 0.95); color: #eee; font: 600 12px/1.4 system-ui, sans-serif; padding: 3px 8px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.25); white-space: nowrap; text-align: center; border: 1px solid rgba(0,0,0,0.1); pointer-events: none; }
 		.marker-2d__dot { width: 18px; height: 18px; background: #e53935; border: 5px solid #000; border-radius: 50%;  box-shadow: 0 2px 5px rgba(0,0,0,0.35); pointer-events: none; }
 		.attribution { position: absolute; bottom: 4px; right: 6px; z-index: 11; font: 11px/1.2 system-ui, sans-serif; color: #555; background: rgba(255,255,255,0.85); padding: 2px 5px; border-radius: 3px; pointer-events: auto; cursor: default;  }
+		.information { position: absolute; bottom: 4px; left: 6px; z-index: 11; font: 11px/1.2 system-ui, sans-serif; color: #555; background: rgba(255,255,255,0.85); padding: 2px 5px; border-radius: 3px; pointer-events: auto; cursor: default;  }
 
 		.zoom-switcher { position: absolute; top: 10px; left: 10px; z-index: 12; background: rgba(255, 255, 255, 0.95); border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); overflow: hidden; font-family: system-ui, sans-serif; }
 		.zoom-switcher button { display: block; width: 100%; padding: 2px 10px; border: none; background: #fff; cursor: pointer; font: 600 13px system-ui, sans-serif; color: #333; transition: background 0.15s, color 0.15s; }
@@ -30,7 +31,8 @@
 		.provider-switcher button + button { border-top: 1px solid #e0e0e0; }
 
 		.overlay-layer { position: absolute; top: 0; left: 0; z-index: 5; pointer-events: none; }
-		.hint-layer    { position: absolute; top: 0; left: 0; z-index: 20; pointer-events: none; }
+		.kml-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 6; pointer-events: none; /* Пропускает клики сквозь KML */ }
+		.hint-layer { position: absolute; top: 0; left: 0; z-index: 20; pointer-events: none; }
 		.map-circle { position: absolute; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: auto; transition: opacity 0.2s ease; }
 		.map-circle:hover { opacity: 0.85; }
 		.map-rect { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; transition: opacity 0.2s ease; box-sizing: border-box; }
@@ -54,6 +56,7 @@
 		<div class="zoom-switcher" id="zoom-switcher"></div>
 		<div class="provider-switcher" id="provider-switcher"></div>
 		<div class="attribution" id="attribution"></div>		
+		<div class="information" id="information"></div>		
 	</div>
 </body>
 <script id="engine">  /* ========================= Движок ========================= */
@@ -68,13 +71,14 @@ class SimpleTileMap {
 	параметры вызова:
 		- lat, lon, zoom, provider
 		- markerLat, markerLon, markerText, showMarker, onMarkerClick
-		- showZoomLevels, showProviders
+		- showZoomLevels, showProviders, showInformation
 	 вспомогательные параметры:
 		- tileUrl, subdomains, ellipse, attr, minZoom, maxZoom
 	 методы:
 		- update()
 		- setCenter()
 		- getCenter()
+		- getMousePos()
 		- setTileProvider()
 		- setZoomInOut()
 	 маркер (один):
@@ -96,6 +100,9 @@ class SimpleTileMap {
 		- updateIcon()
 		- removeOverlay()
 		- clearOverlays()
+	 управление kml слоями:
+		- addKML()
+		- clearKML()
 	 управление хинтами:
 		- addHint()
 		- updateHint()
@@ -109,9 +116,11 @@ class SimpleTileMap {
     if (!this.container) throw new Error('Контейнер карты не найден');
 
     // Координаты карты //
-    this.realLat = this.lat  = options.lat ?? 55.89; // <- Широта  WGS-84
-    this.realLon = this.lon  = options.lon ?? 37.69; // <- Долгота WGS-84
-    this.viewZ   = this.zoom = options.zoom ?? 12;	 // <- Масштаб  3..19
+    this.realLat  = this.lat  = options.lat ?? 55.89; // <- Широта  WGS-84
+    this.realLon  = this.lon  = options.lon ?? 37.69; // <- Долгота WGS-84
+    this.viewZ    = this.zoom = options.zoom ?? 12;	  // <- Масштаб  3..19
+	this.mouseLat = this.realLat;
+	this.mouseLon = this.realLon;
 	
 	// Параметры тайлов, OSM по умолчанию //
 	this.tileUrl       = options.tileUrl ?? 'https://{s}.tile.osm.org/{z}/{x}/{y}.png'
@@ -130,8 +139,9 @@ class SimpleTileMap {
 	this.onMarkerClick = options.onMarkerClick ?? null; // <- Обработчик клика
 		
 	// Навигационные элементы //
-	this.showZoomLevels = options.showZoomLevels ?? false; // <- Масштаб карты 
-	this.showProviders  = options.showProviders ?? false;  // <- Провайдеры карты
+	this.showZoomLevels  = options.showZoomLevels ?? false; // <- Масштаб карты 
+	this.showProviders   = options.showProviders ?? false;  // <- Провайдеры карты
+	this.showInformation = options.showInformation ?? false; // <- Информация
 
 	// Константы //
 	this.tileSize  = 256;    
@@ -161,8 +171,12 @@ class SimpleTileMap {
 	// Массив оверлеев (круги, полигоны, точки, хинты) //
     this.overlays = [];
 	this.hints = [];
+	this.kmlFeatures = [];
+    this._kmlStyles = {};
 
 	// Инициализация элементов //
+	this.markerWidth = 0;
+	this.markerHeight = 0;
 	this._initProviders();
 	this._initZoomSwitcher();
     this._initProviderSwitcher();
@@ -250,6 +264,10 @@ class SimpleTileMap {
     this.overlayLayer.className = 'overlay-layer';
     this.container.appendChild(this.overlayLayer);
 	
+	this.kmlLayer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.kmlLayer.setAttribute('class', 'kml-layer');
+    this.container.appendChild(this.kmlLayer);
+	
 	this.hintLayer = document.createElement('div');
     this.hintLayer.className = 'hint-layer';
     this.container.appendChild(this.hintLayer);
@@ -260,6 +278,15 @@ class SimpleTileMap {
     this.markerLayer.style.left = '0';
     this.markerLayer.style.zIndex = '10';
     this.container.appendChild(this.markerLayer);
+	
+	const tempDiv = document.createElement('div');
+	tempDiv.className = 'marker-2d__dot';
+	tempDiv.style.visibility = 'hidden';
+	tempDiv.style.position = 'absolute';
+	document.body.appendChild(tempDiv);
+	this.markerWidth = parseInt(window.getComputedStyle(tempDiv).width);
+	this.markerHeight = parseInt(window.getComputedStyle(tempDiv).height);
+	document.body.removeChild(tempDiv);
   }
 
   // Привязка событий //
@@ -290,7 +317,7 @@ class SimpleTileMap {
     return url;
   }
 
-  // Преобразования координат, проекции Web Mercator Sphere + Ellipse //
+  // Прямое преобразования координат, проекции Web Mercator Sphere + Ellipse //
   _lonToX(lon, z) { return (lon + 180) / 360 * (1 << z); }
 
   _latToY(lat, z) {
@@ -321,7 +348,8 @@ class SimpleTileMap {
 		return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * (1 << z);
 	};
   }
-   
+  
+  // Обратное преобразования координат, проекции Web Mercator Sphere + Ellipse //
   _xToLon(x, z) { return x / (1 << z) * 360 - 180; }
 
   _yToLat(y, z) {
@@ -596,6 +624,78 @@ class SimpleTileMap {
     }
   }
   
+  // Преробразование стилей kml //
+  _kmlColorToCss(kmlColor) {
+    if (!kmlColor || kmlColor.length !== 8) return 'rgba(52,137,255,0.35)';
+    const a = parseInt(kmlColor.substring(0, 2), 16) / 255;
+    const b = parseInt(kmlColor.substring(2, 4), 16);
+    const g = parseInt(kmlColor.substring(4, 6), 16);
+    const r = parseInt(kmlColor.substring(6, 8), 16);
+    return `rgba(${r},${g},${b},${a.toFixed(2)})`;
+  }
+
+  // Парсинг координат kml //
+  _parseKmlCoordinates(text) {
+    return text.trim().split(/\s+/).map(pair => {
+      const [lon, lat] = pair.split(',').map(Number);
+      return {lon,lat};
+    }).filter(c => !isNaN(c.lat) && !isNaN(c.lon));
+  }
+
+  // Отрисовка kml //
+  _updateKML() {
+    this.kmlLayer.innerHTML = '';
+    if (!this.kmlFeatures.length) return;
+
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+
+    for (const f of this.kmlFeatures) {
+      if (f.type === 'point') {
+	  
+        const cx = this._lonToX(f.coords[0].lon, this.viewZ);
+        const cy = this._latToY(f.coords[0].lat, this.viewZ);
+        const px = (cx - this.viewX) * this.tileSize + w / 2;
+        const py = (cy - this.viewY) * this.tileSize + h / 2;
+
+        if (f.style.iconUrl) {
+          const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+          img.setAttribute('href', f.style.iconUrl);
+          img.setAttribute('x', px - 16); img.setAttribute('y', py - 16);
+          img.setAttribute('width', 32); img.setAttribute('height', 32);
+          this.kmlLayer.appendChild(img);
+        } else {
+          const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          c.setAttribute('cx', px); c.setAttribute('cy', py);
+          c.setAttribute('r', f.style.strokeWidth * 1.5 || 5);
+          c.setAttribute('fill', f.style.fill); c.setAttribute('stroke', '#fff');
+          c.setAttribute('stroke-width', '1.5');
+          this.kmlLayer.appendChild(c);
+        }
+		
+      } else {
+	  
+        const pts = f.coords.map(c => {
+          const x = (this._lonToX(c.lon, this.viewZ) - this.viewX) * this.tileSize + w / 2;
+          const y = (this._latToY(c.lat, this.viewZ) - this.viewY) * this.tileSize + h / 2;
+          return `${x},${y}`;
+        });
+        if (pts.length < 2) continue;
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const d = f.type === 'polygon' ? `M ${pts.join(' L ')} Z` : `M ${pts.join(' L ')}`;
+        path.setAttribute('d', d);
+        path.setAttribute('stroke', f.style.stroke);
+        path.setAttribute('stroke-width', f.style.strokeWidth);
+        path.setAttribute('fill', f.type === 'polygon' ? f.style.fill : 'none');
+        path.setAttribute('stroke-linejoin', 'round');
+        path.setAttribute('stroke-linecap', 'round');		
+        this.kmlLayer.appendChild(path);
+		
+      }
+    }
+  }
+  
   // Отображение маркера //
   _placeMarker() {		
     this.markerLayer.innerHTML = '';
@@ -609,14 +709,14 @@ class SimpleTileMap {
     const dx = (this._lonToX(this.markerLon, this.viewZ) - this.viewX) * this.tileSize;
     const dy = (this._latToY(this.markerLat, this.viewZ) - this.viewY) * this.tileSize;
 
-    const px = w / 2 + dx;
-    const py = h / 2 + dy;
+    const px = w / 2 + dx + 1;
+    const py = h / 2 + dy - this.markerHeight + 1;
 
     // Не рендерим, если маркер далеко за пределами вьюпорта //
     if (px < -50 || px > w + 50 || py < -80 || py > h + 20) return;
 
     const el = document.createElement('div');
-    el.className = 'marker-2d';
+    el.className = 'marker-2d';	
     el.style.left = px + 'px';
     el.style.top  = py + 'px';	
 
@@ -627,7 +727,7 @@ class SimpleTileMap {
 		label.innerHTML = this.markerText.trim();		
 
     const dot = document.createElement('div');
-    dot.className = 'marker-2d__dot';
+    dot.className = 'marker-2d__dot';	
 
     el.appendChild(label);
     el.appendChild(dot);
@@ -709,8 +809,14 @@ class SimpleTileMap {
 	this.realLat = this._yToLat(this.viewY, this.viewZ);
     this._renderTiles();
 	this._updateOverlays();
+	this._updateKML();
 	this._updateHints();
-    this._placeMarker();	
+    this._placeMarker();
+			
+	if(this.showInformation) {
+		const el = document.getElementById('information')
+		if(el) el.innerHTML = `C ${this.realLat.toFixed(8)}/${this.realLon.toFixed(8)}`;
+	};
   }
 
   /** Добавление круга
@@ -900,6 +1006,81 @@ class SimpleTileMap {
     this._placeMarker();
   }
   
+  // Добавить kml данные (xml или url) //
+  async addKML(source, replace = false) {
+    let xml = 'unknown';
+    if (typeof source === 'string' && (source.startsWith('<'))) {
+      xml = source;
+    } else {
+      const res = await fetch(source);
+      if (!res.ok) throw new Error(`KML load failed: ${res.status}`);
+      xml = await res.text();
+    }
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, 'text/xml');
+    if (doc.querySelector('parsererror')) throw new Error('Invalid KML Data');
+
+    // Парсим стили //
+    if (replace) this._kmlStyles = {};
+    for (const s of doc.getElementsByTagName('Style')) {
+      const id = s.getAttribute('id');
+      if (!id) continue;
+      const l = s.querySelector('LineStyle');
+      const p = s.querySelector('PolyStyle');
+      const i = s.querySelector('IconStyle Icon href');
+      this._kmlStyles[id] = {
+        stroke: l?.querySelector('color')?.textContent ? this._kmlColorToCss(l.querySelector('color').textContent) : null,
+        strokeWidth: l?.querySelector('width')?.textContent ? Number(l.querySelector('width').textContent) : null,
+        fill: p?.querySelector('color')?.textContent ? this._kmlColorToCss(p.querySelector('color').textContent) : null,
+        iconUrl: i?.textContent || null
+      };
+    }
+
+    // Парсим Placemarks //
+    if (replace) this.kmlFeatures = [];
+	let was = this.kmlFeatures.length;
+    for (const pm of doc.getElementsByTagName('Placemark')) {
+      const name = pm.querySelector('name')?.textContent || '';
+      const su = pm.querySelector('styleUrl')?.textContent?.replace('#', '');
+      const baseStyle = this._kmlStyles[su] || {};
+
+      const inline = {};
+      const ils = pm.querySelector('Style');
+      if (ils) {
+        const l = ils.querySelector('LineStyle');
+        const p = ils.querySelector('PolyStyle');
+        const i = ils.querySelector('IconStyle Icon href');
+        inline.stroke = l?.querySelector('color')?.textContent ? this._kmlColorToCss(l.querySelector('color').textContent) : null;
+        inline.strokeWidth = l?.querySelector('width')?.textContent ? Number(l.querySelector('width').textContent) : null;
+        inline.fill = p?.querySelector('color')?.textContent ? this._kmlColorToCss(p.querySelector('color').textContent) : null;
+        inline.iconUrl = i?.textContent || null;
+      }
+
+      const style = { stroke: '#3388ff', strokeWidth: 2, fill: 'rgba(51,136,255,0.15)', iconUrl: null, ...baseStyle, ...inline };
+
+      let type, coords;
+      const pt = pm.querySelector('Point coordinates');
+      const ln = pm.querySelector('LineString coordinates');
+      const pg = pm.querySelector('Polygon outerBoundaryIs LinearRing coordinates');
+	  
+      if (pt) { type = 'point'; coords = this._parseKmlCoordinates(pt.textContent); }
+      else if (ln) { type = 'linestring'; coords = this._parseKmlCoordinates(ln.textContent); }
+      else if (pg) { type = 'polygon'; coords = this._parseKmlCoordinates(pg.textContent); }
+      else continue;
+
+      this.kmlFeatures.push({ type, coords, style, name });
+    }
+    this.update();
+    return this.kmlFeatures.length - was;
+  }
+
+  clearKML() { 
+	this._kmlStyles = {}; 
+	this.kmlFeatures = []; 
+	this._updateKML(); 
+  }  
+  
   /** Добавление хинта 
 	options: 
 		- lat - широта
@@ -955,9 +1136,14 @@ class SimpleTileMap {
     this.update();
   }
   
-  // Получить центр карты //
+  // Получить координаты центра карты //
   getCenter() {
 	return {lat:this.realLat,lon:this.realLon,zoom:this.viewZ};
+  }
+  
+  // Получить координаты курсора мыши //
+  getMousePos() {
+	return {lat:this.mouseLat,lon:this.mouseLat,zoom:this.viewZ};
   }
 
   // Установить url тайлов карты //
@@ -1009,8 +1195,11 @@ class SimpleTileMap {
     window.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('mouseup', this._onMouseUp);
     this.container.removeEventListener('wheel', this._onWheel);
-    this.tileLayer.remove();
-    this.markerLayer.remove();
+    this.tileLayer?.remove();
+	this.overlayLayer?.remove();
+	this.kmlLayer?.remove(); 
+	this.hintLayer?.remove();
+    this.markerLayer?.remove();
   }
 
   /* // Обработчики событий // */
@@ -1021,7 +1210,19 @@ class SimpleTileMap {
   }
 
   _onMouseMove(e) {
-    if (!this.isDragging) return;
+    if (!this.isDragging) 
+	{
+		const rect = this.container.getBoundingClientRect();
+		const offX = (e.clientX - rect.left - rect.width / 2) / this.tileSize;
+		const offY = (e.clientY - rect.top - rect.height / 2) / this.tileSize;
+		this.mouseLon = this._xToLon(this.viewX + offX, this.viewZ);
+		this.mouseLat = this._yToLat(this.viewY + offY, this.viewZ);
+		if(this.showInformation) {
+			const el = document.getElementById('information')
+			if(el) el.innerHTML = `C ${this.realLat.toFixed(8)}/${this.realLon.toFixed(8)} M ${this.mouseLat.toFixed(8)}/${this.mouseLon.toFixed(8)}`;
+		};
+		return;
+	};
     this.viewX = this.dragView.x - (e.clientX - this.dragStart.x) / this.tileSize;
     this.viewY = this.dragView.y - (e.clientY - this.dragStart.y) / this.tileSize;
     this.update();
@@ -1069,16 +1270,17 @@ class SimpleTileMap {
 
 	// Инициализация карты //
 	const map = new SimpleTileMap('#map-container', {
-		lat: lt,              // широта 
-		lon: ln,              // долгота
-		zoom: zoom,           // зум
-		provider: provider,	  // тип карты		
-		markerText: text,     // текст маркера
-		showMarker: true,     // отображение маркера
-		onMarkerClick: (d) => // событие клика маркера
+		lat: lt,               // широта 
+		lon: ln,               // долгота
+		zoom: zoom,            // зум
+		provider: provider,	   // тип карты		
+		markerText: text,      // текст маркера
+		showMarker: true,      // отображение маркера
+		onMarkerClick: (d) =>  // событие клика маркера
 			console.log(`Marker clicked: ${d.lat}/${d.lon}/${d.zoom}/${d.provider}/${d.markerText}/${d.element}`),		
-		showProviders: true,  // отображать типы карт
-		showZoomLevels: true, // отображать зум (+) зум (-)
+		showProviders: true,   // отображать типы карт
+		showZoomLevels: true,  // отображать зум (+) зум (-)
+		showInformation: true, // отображать координаты
 	});
 
 	// Объекты карты //
@@ -1124,6 +1326,35 @@ class SimpleTileMap {
 		setTimeout(() => map.updateRectangle('rect-2', { widthMeters: 1600, heightMeters: 2700}), 4000);
 	};
 
+	var addKML1 = function() {
+		var demoKML = '<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><Style id="redPoly"><LineStyle><color>ff0000ff</color><width>2</width></LineStyle><PolyStyle><color>660000ff</color></PolyStyle></Style>';
+			demoKML += '<Placemark><name>Маршрут</name><LineString><coordinates>39.88,57.64 39.90,57.645 39.91,57.65 39.89,57.655 </coordinates></LineString></Placemark>';
+			demoKML += '<Placemark><name>Зона интереса</name><styleUrl>#redPoly</styleUrl><Polygon><outerBoundaryIs><LinearRing><coordinates>39.87,57.64 39.90,57.64 39.90,57.66 39.87,57.66 39.87,57.64</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>';
+			demoKML += '<Placemark><name>Точка A</name><Point><coordinates>39.89,57.65</coordinates></Point></Placemark></Document></kml>';
+		map.addKML(demoKML).then(c => console.log(`Загружено ${c} объектов из KML`));
+		map.setCenter(57.645,39.90);
+		var popupHtml5 = '<div style="display:flex; align-items:center; gap:6px; width:400px;">';
+			popupHtml5 += '<span style="font-size:18px;">&nbsp;</span>';
+			popupHtml5 +='<div><b>Выберите действие:</b><br/><ol>';
+			popupHtml5 +='<li><a href="#" onclick="map.clearKML();return false;">Удалить KML слои</a></li>';
+			popupHtml5 +='<li><a href="#" onclick="map.setCenter('+lt+','+ln+');return false;">Вернутся к «'+text+'»</a></li>';
+			popupHtml5 +='</ol></div></div>';
+		map.addHint({lat: 57.645, lon: 39.90, title: 'Demo KML', content: popupHtml5, id: 'hint-kml'});	
+	};
+	
+	var addKML2 = function() {
+		map.addKML('map.kml').then(c => console.log(`Загружено ${c} объектов из KML`));
+		map.setCenter(44.36,40.3);	
+		var popupHtml4 = '<div style="display:flex; align-items:center; gap:6px; width:400px;">';
+			popupHtml4 += '<span style="font-size:18px;">&nbsp;</span>';
+			popupHtml4 +='<div><b>Выберите действие:</b><br/><ol>';
+			popupHtml4 +='<li><a href="#" onclick="map.clearKML();return false;">Удалить KML слои</a></li>';
+			popupHtml4 +='<li><a href="#" onclick="map.setCenter('+lt+','+ln+');return false;">Вернутся к «'+text+'»</a></li>';
+			popupHtml4 +='</ol></div></div>';
+		map.addHint({lat: 44.36, lon: 40.3, title: 'KML из map.kml', content: popupHtml4, id: 'hint-kml'});	
+	};
+		
+
 	if (/* Динамические изменения маркера */ true) {
 		setTimeout(() => map.setMarker(lt, ln, `${text}`,(d) => {
 			var popupHtml3 = '<div style="display:flex; align-items:center; gap:6px; width:400px;">';
@@ -1142,6 +1373,10 @@ class SimpleTileMap {
 			popupHtml3 +='<a href="#" onclick="map.removeOverlay(\'rect-1\');return false;">удалить</a> зону 1</li>';
 			popupHtml3 +='<li><a href="#" onclick="addRect2();return false;">Добавить</a>, <a href="#" onclick="map.updateRectangle(\'rect-2\', { widthMeters: 4000, heightMeters: 4000, strokeWidth: 20 });return false;">изменить</a> или ';
 			popupHtml3 +='<a href="#" onclick="map.removeOverlay(\'rect-2\');return false;">удалить</a> зону 2</li>';
+			popupHtml3 +='<li><a href="#" onclick="map.setCenter('+d.lat+','+d.lon+');return false;">Центрировать карту</a></li>';
+			popupHtml3 +='<li><a href="#" onclick="addKML1();return false;">Отобразить слой «Demo KML»</a></li>';
+			popupHtml3 +='<li><a href="#" onclick="addKML2();return false;">Отобразить слой KML из «map.kml»</a></li>';
+			popupHtml3 +='<li><a href="#" onclick="map.clearKML();return false;">Удалить KML слои</a></li>';
 			popupHtml3 +='</ol></div></div>';
 			map.addHint({lat: d.lat, lon: d.lon, title: d.markerText, content: popupHtml3, id: 'hint-mt'})
 		}), 500);
@@ -1177,11 +1412,6 @@ class SimpleTileMap {
 		  onClick: (data) => map.addHint({lat: data.lat, lon: data.lon, title: 'АЗС 24/7', content: popupHtml2, id: 'hint-2'})
 		});
 	}
-
-	if (/* Пример управления слоями */ false) {
-		map.updateRectangle('rect-1', { color: 'rgba(255,193,7,0.3)' });
-		map.clearOverlays();
-	};
 	
 </script>
 
