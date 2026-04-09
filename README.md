@@ -1,4 +1,12 @@
 ## dkxce Simple Tiles JS Map
 
-src <a href="map.html">map.html</a>
-<img src="map.png"/>
+src <a href="map.html">map.html</a><br/>
+<img src="map.png"/><br/>
+<img src="map2.png"/><br/>
+**Supports**:
+- single marker
+- hint(s)
+- points
+- circles
+- rectangles
+- kml layers
