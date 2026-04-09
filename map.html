@@ -79,6 +79,7 @@ class SimpleTileMap {
 		- setCenter()
 		- getCenter()
 		- getMousePos()
+		- getTileProviders()
 		- setTileProvider()
 		- setZoomInOut()
 	 маркер (один):
@@ -123,20 +124,22 @@ class SimpleTileMap {
 	this.mouseLon = this.realLon;
 	
 	// Параметры тайлов, OSM по умолчанию //
-	this.tileUrl       = options.tileUrl ?? 'https://{s}.tile.osm.org/{z}/{x}/{y}.png'
-    this.subdomains    = Array.isArray(options.subdomains) ? options.subdomains : ['a', 'b', 'c'];   	
-	this.isEllipse     = options.ellipse ?? false; // EPSG:3395 (true) или EPSG:3857 (false)
-	this.attr          = options.attr ?? 'Tiles by © OSM';	
-	this.minZoom       = options.minZoom ?? 3;
-    this.maxZoom       = options.maxZoom ?? 19;
-	this.providerKey   = options.provider ?? 'OSM';
+	this.tileUrl        = options.tileUrl ?? 'https://{s}.tile.osm.org/{z}/{x}/{y}.png'
+    this.subdomains     = Array.isArray(options.subdomains) ? options.subdomains : ['a', 'b', 'c'];   	
+	this.isEllipse      = options.ellipse ?? false; // EPSG:3395 (true) или EPSG:3857 (false)
+	this.attr           = options.attr ?? 'Tiles by © OSM';	
+	this.minZoom        = options.minZoom ?? 3;
+    this.maxZoom        = options.maxZoom ?? 19;
+	this.providerKey    = options.provider ?? 'OSM';
+	this.customTileFunc = null;
+	this.onMoveRending  = true;
 	
 	// Параметры маркера //
-	this.markerLat     = options.markerLat ?? this.lat; // <- Широта  WGS-84
-	this.markerLon     = options.markerLon ?? this.lon; // <- Долгота WGS-84
-    this.markerText    = options.markerText ?? null;    // <- Текст или html 
-	this.showMarker    = options.showMarker ?? false;   // <- Отображение
-	this.onMarkerClick = options.onMarkerClick ?? null; // <- Обработчик клика
+	this.markerLat      = options.markerLat ?? this.lat; // <- Широта  WGS-84
+	this.markerLon      = options.markerLon ?? this.lon; // <- Долгота WGS-84
+    this.markerText     = options.markerText ?? null;    // <- Текст или html 
+	this.showMarker     = options.showMarker ?? false;   // <- Отображение
+	this.onMarkerClick  = options.onMarkerClick ?? null; // <- Обработчик клика
 		
 	// Навигационные элементы //
 	this.showZoomLevels  = options.showZoomLevels ?? false; // <- Масштаб карты 
@@ -168,7 +171,7 @@ class SimpleTileMap {
     // Детект браузера для специфичных фиксов //
     this._isFirefox = navigator.userAgent.includes('Firefox');
 
-	// Массив оверлеев (круги, полигоны, точки, хинты) //
+	// Массив оверлеев (круги, полигоны, точки, хинты, kml) //
     this.overlays = [];
 	this.hints = [];
 	this.kmlFeatures = [];
@@ -177,6 +180,8 @@ class SimpleTileMap {
 	// Инициализация элементов //
 	this.markerWidth = 0;
 	this.markerHeight = 0;
+	this.emptyTile = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2IiB2aWV3Qm94PSIwIDAgMjU2IDI1NiI+PHJlY3QgeD0iMC41IiB5PSIwLjUiIHdpZHRoPSIyNTUiIGhlaWdodD0iMjU1IiBmaWxsPSJub25lIiBzdHJva2U9IiNDMEMwQzAiIHN0cm9rZS13aWR0aD0iMSIgc2hhcGUtcmVuZGVyaW5nPSJjcmlzcEVkZ2VzIi8+PC9zdmc+';
+	this.loadingTile = this._generateTextImageSVG('Wait, loading ...', {fontSize:10,fontColor:'gray',fontWeight:'400'});
 	this._initProviders();
 	this._initZoomSwitcher();
     this._initProviderSwitcher();
@@ -192,23 +197,164 @@ class SimpleTileMap {
 		this.setTileProvider(this.providerKey);
 	}
   }
+  
+  // Генерация кастомного тайла с текстом //
+  _generateTextImageSVG = function (text = "Wait, loading ...", options = {}) {
+	  const {	
+		width = 256, height = 256, fontSize = 14,
+		stroke = '#C0C0C0', fill = 'none', fontColor='#222', fontWeight='bold', keepSave = true
+	  } = options;
+	  
+	  var safeText = text;	
+	  if(keepSave)
+	  {
+			safeText = '';
+			const lines = text.split(/\r?\n/);			
+			lines.forEach((element, index, array) => {
+				element = element.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+				safeText += '<tspan x="'+(width/2)+'" dy="1.2em">'+element+'</tspan>';
+			});
+	  };
+	  
+	  let svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+width+'" height="'+height+'" viewBox="0 0 '+width+' '+height+'">';
+	  svg += '<rect x="0.5" y="0.5" width="'+width+'" height="'+height+'" fill="'+fill+'" stroke="'+stroke+'" stroke-width="1" shape-rendering="crispEdges"/>';
+	  svg += '<text x="'+(width/2)+'" y="'+(height/2)+'" font-family="system-ui, sans-serif" font-size="';
+	  svg += fontSize;
+	  svg += '" font-weight="'+fontWeight+'" fill="'+fontColor+'" text-anchor="middle" dominant-baseline="central" dy="0.1em">';
+	  svg += safeText;
+	  svg += '</text></svg>';
+	  
+	  return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+	}
+	 
+   // Синхронное наложение слоев тайлов путем добавления img //
+  _renderOverlayImages = async function (layers, /*исходный тайл нулевого уровня*/ image = null, options = {}) {
+	  const { overlayOpacity = 1.0 } = options;
+		if(layers == null) return;
+		if(image == null) return;
+		if (!Array.isArray(layers)) layers = [layers];
+		
+		layers.forEach((element, index, array) => {
+		  let newImg = image.cloneNode(true);
+		  newImg.src = element;
+		  newImg.style.zIndex = index + 1;
+		  newImg.style.opacity = overlayOpacity;
+		  this.imgs.push({img:newImg,left:Math.round(newImg.style.left),top:Math.round(newImg.style.top)});
+		  this.tileLayer.appendChild(newImg);
+		});			
+	}
 
-   // Инициализация провадеров //
+   // Асинхронное наложение слоев тайлов путем canvas draw //
+  _drawOverlayImages = async function (layers, /*исходный тайл нулевого уровня*/ image = null, options = {}) {
+	  const {	
+		width = 256, height = 256, overlayOpacity = 1.0, // Прозрачность верхнего слоя (0..1)
+		crossOrigin = 'anonymous' // CORS-режим для внешних URL
+	  } = options;
+	  
+	  if(layers == null) return;
+	  if(image == null) return;
+	  if (!Array.isArray(layers)) layers = [layers];
+
+	  const loadImg = (src) => new Promise((resolve, reject) => {
+		const img = new Image();
+		if (!src.startsWith('data:') && crossOrigin) { img.crossOrigin = crossOrigin; }
+		img.onload = () => resolve(img);
+		img.onerror = (e) => reject(new Error(`Не удалось загрузить изображение: ${src}`));
+		img.src = src;
+	  });
+
+	  try {
+		const images = await Promise.all(layers.map(src => loadImg(src)));
+
+		const canvas = document.createElement('canvas');
+		canvas.width = width;
+		canvas.height = height;
+		const ctx = canvas.getContext('2d');
+
+		images.forEach((img, i) => {
+		  ctx.globalAlpha = i === 0 ? 1.0 : overlayOpacity;
+		  ctx.drawImage(img, 0, 0, width, height);
+		});
+		ctx.globalAlpha = 1.0;
+
+		let result = canvas.toDataURL('image/png');
+		image.src = result;
+		return result;
+	  } 
+	  catch (err) {
+		console.error('Ошибка при слиянии изображений:', err);
+		throw err;
+	  }
+	}
+  
+  // Инициализация провадеров //
   _initProviders() {
 	this.TILE_PROVIDERS = {
 	  OSM: 		 	{name: 'OSM', tileUrl: 'https://{s}.tile.osm.org/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OSM'},
 	  OSMGerman: 	{name: 'OSM German', tileUrl: 'http://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OSM'},
 	  OSMHot: 		{name: 'OSM Hot', tileUrl: 'http://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OSM'},
+	  OpenVkarte: 	{name: 'OpenVkarte', tileUrl: 'http://tile.xn--pnvkarte-m4a.de/tilegen/{z}/{x}/{y}.png', attr: 'Tiles by © OpenVkarte'},
 	  OpenTopoMap: 	{name: 'OpenTopoMap', tileUrl: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OpenTopoMap'},
+	  Wikimapia: 	{name: 'Wikimapia', tileUrl: 'http://localhost/', attr: 'Tiles by © Wikimapia', customTileFunc: (z,x,y,i) => {
+					 return "http://i" + ((x % 4) + (y % 4)*4) + ".wikimapia.org/?lng=1&" + 'x=' + x + '&y='+y+'&zoom='+z; }},
+	  MSMapTiles: 	{name: 'MSMap', tileUrl: 'http://localhost/', attr: 'Tiles by © Microsoft', customTileFunc: (z,x,y,i) => {
+						var imageSuffix = '.png';
+						var mapTypeString = "r"; // r/a/h - png/jpeg/jpeg
+						var mapTilesVersion = 22;
+						var sTile = '000000';
+						sTile += (parseInt(y.toString(2) * 2) + parseInt(x.toString(2)));
+						sTile = sTile.substring(sTile.length - z, sTile.length);
+						return 'http://' + mapTypeString + sTile.substring(sTile.length-1, sTile.length) + '.ortho.tiles.virtualearth.net/tiles/' + mapTypeString + sTile + imageSuffix + '?g=' + mapTilesVersion; 
+					}},
+	  MSMapSat: 	{name: 'MSMap Sat', tileUrl: 'http://localhost/', attr: 'Tiles by © Microsoft', customTileFunc: (z,x,y,i) => {
+						var imageSuffix = '.jpeg';
+						var mapTypeString = "h"; // r/a/h - png/jpeg/jpeg
+						var mapTilesVersion = 22;
+						var sTile = '000000';
+						sTile += (parseInt(y.toString(2) * 2) + parseInt(x.toString(2)));
+						sTile = sTile.substring(sTile.length - z, sTile.length);
+						return 'http://' + mapTypeString + sTile.substring(sTile.length-1, sTile.length) + '.ortho.tiles.virtualearth.net/tiles/' + mapTypeString + sTile + imageSuffix + '?g=' + mapTilesVersion;
+					}},
 	  CycleMap: 	{name: 'CycleMap', tileUrl: 'https://{s}.tile.hosted.thunderforest.com/cycle/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © CycleMap'},
 	  MTBMap: 		{name: 'MTBMap', tileUrl: 'https://tile.mtbmap.cz/mtbmap_tiles/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © MTBMap'},
+	  Maps4Free:	{name: 'Maps4Free', tileUrl: 'http://www.maps-for-free.com/layer/relief/z{z}/row{y}/{z}_{x}-{y}.jpg', attr: 'Tiles by © Maps-for-Free', maxZoom: 17},
 	  Google: 		{name: 'Google', tileUrl: 'http://{s}.google.com/vt/lyrs=m@177000000&hl=ru&src=app&x={x}&s=&y={y}&z={z}&s=Ga', subdomains: ['mts0','mts1'], attr: 'Tiles by © Google'},
+	  GoogleSat: 	{name: 'Google Sat', tileUrl: 'http://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', subdomains: ['0','1','2','3'], attr: 'Tiles by © Google'},
+	  GoogleHyb: 	{name: 'Google Hyb', tileUrl: 'http://mt{s}.google.com/vt/lyrs=s,m&hl=iw&x={x}&y={y}&z={z}', subdomains: ['0','1','2','3'], attr: 'Tiles by © Google'},
+	  GoogleTraff:	{name: 'Google Traffic', tileUrl: 'http://localhost/', attr: 'Tiles by © Google', customTileFunc: (z,x,y,i) => { 
+						let subdomains = ['mts0','mts1'];
+						let s = subdomains[Math.floor(Math.random() * subdomains.length)];
+						const layer0 = `http://${s}.google.com/vt/lyrs=m@177000000&hl=ru&src=app&x=${x}&s=&y=${y}&z=${z}&s=Ga`;
+						const layer1 = `http://${s}.google.com/vt?hl=ru&src=app&lyrs=m@177000000,traffic|seconds_into_week:-1&x=${x}&s=&y=${y}&z=${z}&style=15`;
+						this._renderOverlayImages(layer1, i);
+						return layer0;
+					}},
 	  DblGIS: 		{name: '2GIS', tileUrl: 'https://tile{s}.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1.1', subdomains: ['0','1','2','3'], attr: 'Tiles by © 2GIS'},
 	  Yandex: 		{name: 'Yandex', tileUrl: 'https://core-renderer-tiles.maps.yandex.net/tiles?l=map&v=4.41.0&z={z}&x={x}&y={y}&scale=1&lang=ru_RU', ellipse: true, attr: 'Tiles by © Yandex'},
 	  YandexSat: 	{name: 'Yandex Sat', tileUrl: 'http://{s}.maps.yandex.net/tiles?l=sat&v=1.35.0&x={x}&s=&y={y}&z={z}&lang=ru-RU', subdomains: ['sat01','sat02','sat03','sat04'], ellipse: true, attr: 'Tiles by © Yandex'},
 	  ESRI: 		{name: 'ESRI', tileUrl: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}.png', attr: 'Tiles by © ESRI'},
 	  ESRISat: 		{name: 'ESRI Sat', tileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}.png', attr: 'Tiles by © ESRI'},
 	  ScanEx: 		{name: 'ScanEx', tileUrl: 'http://maps.kosmosnimki.ru/TileService.ashx?Request=gettile&LayerName=04C9E7CE82C34172910ACDBF8F1DF49A&apikey=7BDJ6RRTHH&crs=epsg:3857&z={z}&x={x}&y={y}', attr: 'Tiles by © ScanEx'},  
+	  TilesXY: 		{name: 'Tiles XY', tileUrl: 'http://localhost/', attr: 'Tiles by © dkxce', customTileFunc: (z,x,y,i) => { return this._generateTextImageSVG(`X${x} Y${y}\r\n© by dkxce\r\n2026`, {fontSize:12});}},
+	  ImageOvrl:	{name: 'Image Overlay', tileUrl: 'http://localhost/', attr: 'Tiles by © MTBMap', customTileFunc: (z,x,y,i) => { 
+						const layer0 = `https://tile.mtbmap.cz/mtbmap_tiles/${z}/${x}/${y}.png`;
+						const layer1 = this._generateTextImageSVG(`X${x} Y${y}\r\nMTBMap`, {fontSize:12} );
+						this._renderOverlayImages([layer1], i, {overlayOpacity:0.75});
+						return layer0; // возвращаем нижний слой
+					}},
+	  CanvasOvrl:	{name: 'Canvas Overlay', tileUrl: 'http://localhost/', attr: 'Tiles by © MTBMap', onMoveRending: false, customTileFunc: (z,x,y,i) => { 
+						const layer1 = `https://tile.mtbmap.cz/mtbmap_tiles/${z}/${x}/${y}.png`;
+						const layer2 = this._generateTextImageSVG(`X${x} T${y}\r\nMTBMap\r\nCANVAS RENDER `, {fontSize:12,fontColor:'red'} );
+						this._drawOverlayImages([layer1,layer2], i, { overlayOpacity: 0.9 });
+						return layer1; // возвращаем нижний слой
+					}},
+	  DelayOvrl:	{name: 'Delay Overlay', tileUrl: 'http://localhost/', attr: 'Tiles by © MTBMap', onMoveRending: false, customTileFunc: (z,x,y,i) => { 
+						const layer1 = `https://tile.mtbmap.cz/mtbmap_tiles/${z}/${x}/${y}.png`;
+						const layer2 = this._generateTextImageSVG(`X${x} T${y}\r\nMTBMap\r\nCANVAS RENDER `, {fontSize:12,fontColor:'red'} );
+						this._drawOverlayImages([layer1,layer2], i, { overlayOpacity: 0.9 });
+						return this.loadingTile; // возвращаем тайл загрузки
+					}},
+	  EMPTY: 		{name: 'EMPTY', tileUrl: this.emptyTile, attr: 'Tiles by © dkxce'},	  
 	};
   }
   
@@ -230,7 +376,7 @@ class SimpleTileMap {
       switcher.appendChild(btnOut);
   }
   
-  // Инициализация вабора провайдера //
+  // Инициализация выбора провайдера //
   _initProviderSwitcher() {
 	if (!this.showProviders) return;
 	
@@ -310,16 +456,22 @@ class SimpleTileMap {
   }
   
   // Получение ссылки на тайл //
-  _buildTileUrl(z, x, y) {
-    let url = this.tileUrl.replace('{z}', z).replace('{x}', x).replace('{y}', y);
-    if (url.includes('{s}') && this.subdomains?.length > 0)
-      url = url.replace('{s}', this._getRandomSubdomain());
-    return url;
+  _buildTileUrl(z, x, y, i = null) {  
+    if (this.customTileFunc != null)
+		return this.customTileFunc(z, x, y, i);
+	else
+	{
+		let url = this.tileUrl.replaceAll('{z}', z).replaceAll('{x}', x).replaceAll('{y}', y);
+		if (url.includes('{s}') && this.subdomains?.length > 0)
+		  url = url.replaceAll('{s}', this._getRandomSubdomain());
+		return url;
+	};
   }
 
-  // Прямое преобразования координат, проекции Web Mercator Sphere + Ellipse //
+  // X:LON Прямое преобразования координат, проекции Web Mercator Sphere + Ellipse //
   _lonToX(lon, z) { return (lon + 180) / 360 * (1 << z); }
 
+  // Y:LAT Прямое преобразования координат, проекции Web Mercator Sphere + Ellipse //
   _latToY(lat, z) {
 	if (this.isEllipse)
 	{
@@ -349,9 +501,10 @@ class SimpleTileMap {
 	};
   }
   
-  // Обратное преобразования координат, проекции Web Mercator Sphere + Ellipse //
+  // X:LON Обратное преобразования координат, проекции Web Mercator Sphere + Ellipse //
   _xToLon(x, z) { return x / (1 << z) * 360 - 180; }
 
+  // Y:LAT Обратное преобразования координат, проекции Web Mercator Sphere + Ellipse //
   _yToLat(y, z) {
     const yNorm = y / (1 << z); // Нормализация к [0..1]
     
@@ -410,6 +563,8 @@ class SimpleTileMap {
     this.attr       = config.attr ?? 'Tiles by © OSM';
 	this.minZoom    = config.minZoom ?? 3;
 	this.maxZoom    = config.maxZoom ?? 19;	
+	this.customTileFunc = config.customTileFunc ?? null;
+	this.onMoveRending  = config.onMoveRending ?? true;
 
     const attrEl = document.getElementById('attribution');
     if (this.attr) {
@@ -461,8 +616,7 @@ class SimpleTileMap {
         const img = document.createElement('img');
         img.className = 'tile';
 		img.setAttribute('width', this.tileSize);
-        img.setAttribute('height', this.tileSize);										 
-        img.src = this._buildTileUrl(this.viewZ, tx, ty);
+        img.setAttribute('height', this.tileSize);										         
         img.alt = '';
         img.draggable = false;
 		img.decoding = 'sync';
@@ -486,6 +640,7 @@ class SimpleTileMap {
         
         img.style.width = this.tileSize + 'px';
         img.style.height = this.tileSize + 'px';
+		img.src = this._buildTileUrl(this.viewZ, tx, ty, img);
         
 		this.imgs.push({img:img,left:Math.round(leftPx),top:Math.round(topPx)});
         this.tileLayer.appendChild(img);
@@ -803,8 +958,10 @@ class SimpleTileMap {
   
   /* // Публичные методы // */
   
-  // Обновление карты //
-  update() {
+  /* // Публичные методы // Обновление карты // */
+  update(event = null) {  
+	if (event == 'click') return;
+	if (event == 'mouseup' && this.onMoveRending == true) return;
 	this.realLon = this._xToLon(this.viewX, this.viewZ);
 	this.realLat = this._yToLat(this.viewY, this.viewZ);
     this._renderTiles();
@@ -819,7 +976,7 @@ class SimpleTileMap {
 	};
   }
 
-  /** Добавление круга
+  /** // Публичные методы // Добавление круга //
 	options:
 		- lat - широта центра
 		- lon - долгота центра
@@ -842,7 +999,7 @@ class SimpleTileMap {
     return id;
   }
 
-  // Обновить круг //
+  /* // Публичные методы // Обновить круг // */
   updateCircle(id, options) {
     const overlay = this.overlays.find(o => o.id === id && o.type === 'circle');
     if (!overlay) return;    
@@ -851,7 +1008,7 @@ class SimpleTileMap {
     this._renderCircle(overlay);
   }
   
-  /** Добавление прямоугольника по координатам
+  /** // Публичные методы // Добавление прямоугольника по координатам //
 	options:
 		- north - северная граница (широта)
 		- south - южная граница (широта)
@@ -884,7 +1041,7 @@ class SimpleTileMap {
     return id;
   }
 
-  /** Добавление прямоугольника по центру и размерам
+  /** // Публичные методы // Добавление прямоугольника по центру и размерам //
 	options:
 		- lat - широта центра
 		- lon - долгота центра
@@ -915,7 +1072,7 @@ class SimpleTileMap {
     });
   }
 
-  // Обновить прямоугольник //
+  /* // Публичные методы // Обновить прямоугольник // */
   updateRectangle(id, options) {
     const overlay = this.overlays.find(o => o.id === id && o.type === 'rectangle');
     if (!overlay) return;
@@ -933,7 +1090,7 @@ class SimpleTileMap {
     this._renderRectangle(overlay);
   }
 
-  /** Добавление точки (иконки) //
+  /** // Публичные методы // Добавление точки (иконки) //
 	options:
 		- lat - широта
 		- lon - долгота
@@ -951,7 +1108,7 @@ class SimpleTileMap {
     return id;
   }
   
-  // Обновление точки (иконки //
+  /* // Публичные методы // Обновление точки (иконки) // */
   updateIcon(id, options) {
 	const overlay = this.overlays.find(o => o.id === id && o.type === 'icon');
     if (!overlay) return;    
@@ -960,7 +1117,7 @@ class SimpleTileMap {
     this._renderIcon(overlay);
   }
 
-  // Удалить оверлей (круг, прямоугольник) по ID //
+  /* // Публичные методы // Удалить оверлей (круг, прямоугольник) по ID // */
   removeOverlay(id) {
     const idx = this.overlays.findIndex(o => o.id === id);
     if (idx >= 0) {
@@ -970,7 +1127,7 @@ class SimpleTileMap {
     }
   }
 
-  // Удалить все оверлеи //
+  /* // Публичные методы // Удалить все оверлеи // */
   clearOverlays() {
     for (const overlay of this.overlays)
       if (overlay.element) 
@@ -978,20 +1135,20 @@ class SimpleTileMap {
     this.overlays = [];
   }
 
-  // Установить текст маркера //
+  /* // Публичные методы // Установить текст маркера // */
   setMarkerText(markerText) {
 	this.showMarker = true;
     this.markerText = markerText;
     this._placeMarker();
   }
   
-  // Установить onclick маркера //
+  /* // Публичные методы // Установить onclick маркера // */
   setMarkerOnClick(onMarkerClick) {
 	this.onMarkerClick = onMarkerClick;
     this._placeMarker();
   }
-
-  // Установить маркер //
+  
+  /* // Публичные методы // Установить (обновить) маркер // */
   setMarker(markerLat, markerLon, markerText = null, onMarkerClick = null) {
 	this.markerLat = markerLat;
 	this.markerLon = markerLon;
@@ -1000,13 +1157,13 @@ class SimpleTileMap {
     this._placeMarker();
   }
   
-  // Удалить маркер //
+  /* // Публичные методы // Удалить маркер // */
   removeMarker() {
     this.markerText = null;
     this._placeMarker();
   }
   
-  // Добавить kml данные (xml или url) //
+  /* // Публичные методы // Добавить kml данные (xml или url) // */
   async addKML(source, replace = false) {
     let xml = 'unknown';
     if (typeof source === 'string' && (source.startsWith('<'))) {
@@ -1075,13 +1232,14 @@ class SimpleTileMap {
     return this.kmlFeatures.length - was;
   }
 
+  /* // Публичные методы // Очистить kml данные // */
   clearKML() { 
 	this._kmlStyles = {}; 
 	this.kmlFeatures = []; 
 	this._updateKML(); 
   }  
   
-  /** Добавление хинта 
+  /** // Публичные методы // Добавление хинта //
 	options: 
 		- lat - широта
 		- lon - долгота
@@ -1101,13 +1259,13 @@ class SimpleTileMap {
     return id;
   }
 
-  // Удаление хинта //
+  /* // Публичные методы // Удаление хинта // */
   removeHint(id) {
     const i = this.hints.findIndex(h => h.id === id);
     if (i >= 0) { if(this.hints[i].el) this.hints[i].el.remove(); this.hints.splice(i, 1); }
   }
 
-  // Обновление хинта //
+  /* // Публичные методы // Обновление хинта // */
   updateHint(id, options = {}) {
     const h = this.hints.find(x => x.id === id);
     if (!h) return;
@@ -1120,13 +1278,13 @@ class SimpleTileMap {
     this._renderHint(h);
   }
 
-  // Очистка хинтов //
+  /* // Публичные методы // Очистка хинтов // */
   clearHints() { 
     this.hints.forEach(h => { if(h.el) h.el.remove(); });
     this.hints = [];
   }
 
-  // Установить центр карты //
+  /* // Публичные методы // Установить центр карты // */
   setCenter(lat, lon, zoom = this.viewZ) {
 	this.lat = lat;
     this.lon = lon;
@@ -1136,24 +1294,24 @@ class SimpleTileMap {
     this.update();
   }
   
-  // Получить координаты центра карты //
+  /* // Публичные методы // Получить координаты центра карты // */
   getCenter() {
 	return {lat:this.realLat,lon:this.realLon,zoom:this.viewZ};
   }
   
-  // Получить координаты курсора мыши //
+  /* // Публичные методы // Получить координаты курсора мыши // */
   getMousePos() {
 	return {lat:this.mouseLat,lon:this.mouseLat,zoom:this.viewZ};
   }
 
-  // Установить url тайлов карты //
+  /* // Публичные методы // Установить url тайлов карты // */
   setTileUrl(url) {
     this.tileUrl = url;
 	this._activateTileProvider();
     this.update();
   }
 
-  // Выбрать предустановленную карту //
+  /* // Публичные методы // Выбрать предустановленную карту // */
   setTileProvider(key) {	  
 	var config = this.TILE_PROVIDERS[key];
 	if (config == undefined) key = 'OSM';	
@@ -1172,13 +1330,13 @@ class SimpleTileMap {
 	};
   } 
 
-  // Установить поддомены карты //
+  /* // Публичные методы // Установить поддомены карты // */
   setSubdomains(list) {
     this.subdomains = Array.isArray(list) ? list : [];
     this.update();
   }
 
-  // Изменить зум карты //
+  /* // Публичные методы // Изменить зум карты // */
   setZoomInOut(delta) {
 	const oldZ = this.viewZ;
     this.viewZ = Math.max(this.minZoom, Math.min(this.maxZoom, oldZ + delta));
@@ -1188,8 +1346,15 @@ class SimpleTileMap {
     this.viewY = this.viewY * scale;
     this.update();
   }
+  
+  /* // Публичные методы // Получить список провайдеров карты // */
+  getTileProviders() {
+	let result = {};
+	Object.entries(this.TILE_PROVIDERS).forEach(([key, value]) => { result[key] = value.name });
+	return result;
+  }
 
-  // Деструктор //
+  /* // Публичные методы // Деструктор // */
   destroy() {
     this.container.removeEventListener('mousedown', this._onMouseDown);
     window.removeEventListener('mousemove', this._onMouseMove);
@@ -1225,10 +1390,15 @@ class SimpleTileMap {
 	};
     this.viewX = this.dragView.x - (e.clientX - this.dragStart.x) / this.tileSize;
     this.viewY = this.dragView.y - (e.clientY - this.dragStart.y) / this.tileSize;
-    this.update();
+    this.update('mousemove');
   }
 
-  _onMouseUp() { this.isDragging = false; }
+  _onMouseUp(e) { 
+	let wasDragged = this.isDragging;
+	if (wasDragged && this.dragStart.x == e.clientX && this.dragStart.y == e.clientY) wasDragged = false; 
+	this.isDragging = false; 
+	this.update(wasDragged ? 'mouseup' : 'click'); 
+  }
 
   _onWheel(e) {
     e.preventDefault();
