@@ -10,3 +10,6 @@ src <a href="map.html">map.html</a><br/>
 - circles
 - rectangles
 - kml layers
+
+**Demo**:
+- https://dkxce.github.io/temporary/map.html
