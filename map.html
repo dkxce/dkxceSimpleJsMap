@@ -1420,7 +1420,7 @@ class SimpleTileMap {
   }
 
   _onWheel(e) {
-    if (this._isInteractiveUI(e.target)) return;
+    // if (this._isInteractiveUI(e.target)) return;
     e.preventDefault();
     const oldZ = this.viewZ;
     const delta = e.deltaY < 0 ? 1 : -1;
