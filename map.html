@@ -9,10 +9,10 @@
 	<style>
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body { display: flex; justify-content: center; align-items: center; height: 100vh; background: #1a1a1a; font-family: system-ui, -apple-system, sans-serif; }
-		#map-container { width:100%; height:100%; position: relative; overflow: hidden; border: 0px solid #444; background: #aaccee; cursor: grab; user-select: none; -webkit-user-select: none; transform: translate3d(0, 0, 0); backface-visibility: hidden; }	  
+		#map-container { width:100%; height:100%; position: relative; overflow: hidden; border: 0px solid #444; background: #aaccee; cursor: grab; user-select: none; -webkit-user-select: none; transform: translate3d(0, 0, 0); backface-visibility: hidden; touch-action: none; -webkit-touch-callout: none; }	  
 
 		.tile { position: absolute; pointer-events: none; will-change: left, top; image-rendering: -webkit-optimize-contrast; image-rendering: auto; -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-user-drag: none; -webkit-transition: none; -moz-transition: none; -o-transition: none; transition: none; }	  
-		.marker-2d { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: auto; cursor: pointer; z-index: 10; transition: transform 0.2s ease, opacity 0.2s ease; }
+		.marker-2d { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; z-index: 10; transition: transform 0.2s ease, opacity 0.2s ease; pointer-events: auto; }
 		.marker-2d:hover { transform: translate(-50%, -50%) scale(1.08); z-index: 15; }
 		.marker-2d:active { transform: translate(-50%, -50%) scale(0.95); }
 		.marker-2d__label { background: rgba(0, 0, 0, 0.95); color: #eee; font: 600 12px/1.4 system-ui, sans-serif; padding: 3px 8px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.25); white-space: nowrap; text-align: center; border: 1px solid rgba(0,0,0,0.1); pointer-events: none; }
@@ -20,11 +20,11 @@
 		.attribution { position: absolute; bottom: 4px; right: 6px; z-index: 11; font: 11px/1.2 system-ui, sans-serif; color: #555; background: rgba(255,255,255,0.85); padding: 2px 5px; border-radius: 3px; pointer-events: auto; cursor: default;  }
 		.information { position: absolute; bottom: 4px; left: 6px; z-index: 11; font: 11px/1.2 system-ui, sans-serif; color: #555; background: rgba(255,255,255,0.85); padding: 2px 5px; border-radius: 3px; pointer-events: auto; cursor: default;  }
 
-		.zoom-switcher { position: absolute; top: 10px; left: 10px; z-index: 12; background: rgba(255, 255, 255, 0.95); border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); overflow: hidden; font-family: system-ui, sans-serif; }
+		.zoom-switcher { position: absolute; top: 10px; left: 10px; z-index: 12; background: rgba(255, 255, 255, 0.95); border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); overflow: hidden; font-family: system-ui, sans-serif; pointer-events: auto; }
 		.zoom-switcher button { display: block; width: 100%; padding: 2px 10px; border: none; background: #fff; cursor: pointer; font: 600 13px system-ui, sans-serif; color: #333; transition: background 0.15s, color 0.15s; }
 		.zoom-switcher button:hover { background: #f0f4f8; }
 
-		.provider-switcher { position: absolute; top: 10px; right: 10px; z-index: 12; background: rgba(255, 255, 255, 0.95); border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); overflow: hidden; font-family: system-ui, sans-serif; }
+		.provider-switcher { position: absolute; top: 10px; right: 10px; z-index: 12; background: rgba(255, 255, 255, 0.95); border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); overflow: hidden; font-family: system-ui, sans-serif; pointer-events: auto; }
 		.provider-switcher button { display: block; width: 100%; padding: 2px 10px; border: none; background: #fff; cursor: pointer; font: 600 13px system-ui, sans-serif; color: #333; transition: background 0.15s, color 0.15s; }
 		.provider-switcher button:hover { background: #f0f4f8; }
 		.provider-switcher button.active { background: #4a90d9; color: #fff; }
@@ -37,10 +37,10 @@
 		.map-circle:hover { opacity: 0.85; }
 		.map-rect { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; transition: opacity 0.2s ease; box-sizing: border-box; }
 		.map-rect:hover { opacity: 0.85; }		
-		.map-icon { position: absolute; transform: translate(-50%, -50%); /* Центр иконки ровно на координатах */ pointer-events: auto; cursor: pointer; z-index: 8; transition: transform 0.2s ease, filter 0.2s ease; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25)); }
+		.map-icon { position: absolute; transform: translate(-50%, -50%); /* Центр иконки ровно на координатах */ pointer-events: auto; cursor: pointer; z-index: 8; transition: transform 0.2s ease, filter 0.2s ease; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25)); pointer-events: auto; }
 		.map-icon:hover { transform: translate(-50%, -50%) scale(1.15); filter: drop-shadow(0 3px 5px rgba(0,0,0,0.4)); z-index: 9; }
 		.map-icon:active { transform: translate(-50%, -50%) scale(0.95); }
-		.map-hint { position: absolute; transform: translate(-50%, -100%); pointer-events: auto; z-index: 20; transition: opacity 0.2s ease, transform 0.2s ease; }
+		.map-hint { position: absolute; transform: translate(-50%, -100%); pointer-events: auto; z-index: 20; transition: opacity 0.2s ease, transform 0.2s ease; pointer-events: auto; }
 	    .map-hint__bubble { background: #fff; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2), 0 1px 3px rgba(0,0,0,0.1); padding: 10px 14px; min-width: 120px; max-width: 280px; position: relative; font: 13px/1.4 system-ui, sans-serif; color: #333; border: 1px solid rgba(0,0,0,0.08); }
 	    .map-hint__bubble::after { content: ''; position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid #fff; }
 	    .map-hint__bubble::before { content: ''; position: absolute; bottom: -9px; left: 50%; transform: translateX(-50%); border-left: 9px solid transparent; border-right: 9px solid transparent; border-top: 9px solid rgba(0,0,0,0.08); }
@@ -188,6 +188,10 @@ class SimpleTileMap {
     this._initLayers();
     this._bindEvents();    
 	this.imgs = [];
+	this.isPinching = false;
+    this.pinchStartDist = 0;
+    this.pinchCenter = { x: 0, y: 0 };
+    this.pinchStartView = { x: 0, y: 0, z: 0 };
 	
 	// Определение провайдера //
 	if (this.providerKey == 'OSM'|| this.providerKey == null || this.providerKey == '' || this.providerKey == 'custom') {
@@ -441,11 +445,20 @@ class SimpleTileMap {
     this._onMouseMove = this._onMouseMove.bind(this);
     this._onMouseUp = this._onMouseUp.bind(this);
     this._onWheel = this._onWheel.bind(this);
+	
+	this._onTouchStart = this._onTouchStart.bind(this);
+    this._onTouchMove = this._onTouchMove.bind(this);
+    this._onTouchEnd = this._onTouchEnd.bind(this);
 
     this.container.addEventListener('mousedown', this._onMouseDown);
     window.addEventListener('mousemove', this._onMouseMove);
     window.addEventListener('mouseup', this._onMouseUp);
     this.container.addEventListener('wheel', this._onWheel, { passive: false });
+	
+	this.container.addEventListener('touchstart', this._onTouchStart, { passive: false });
+    window.addEventListener('touchmove', this._onTouchMove, { passive: false });
+    window.addEventListener('touchend', this._onTouchEnd);
+    window.addEventListener('touchcancel', this._onTouchEnd);
   }
 
   // Получение рандомного поддомена карт //
@@ -960,8 +973,9 @@ class SimpleTileMap {
   
   /* // Публичные методы // Обновление карты // */
   update(event = null) {  
-	if (event == 'click') return;
+	if (event == 'click' || event == 'touch') return;
 	if (event == 'mouseup' && this.onMoveRending == true) return;
+	if (event == 'touchend' && this.onMoveRending == true) return;
 	this.realLon = this._xToLon(this.viewX, this.viewZ);
 	this.realLat = this._yToLat(this.viewY, this.viewZ);
     this._renderTiles();
@@ -1368,8 +1382,13 @@ class SimpleTileMap {
   }
 
   /* // Обработчики событий // */
+  _isInteractiveUI(target) {
+    return target.closest('.provider-switcher, .map-hint, .map-icon, .marker-2d');
+  }
+  
   _onMouseDown(e) {
-    this.isDragging = true;
+    if (this._isInteractiveUI(e.target)) return;
+	this.isDragging = true;
     this.dragStart = { x: e.clientX, y: e.clientY };
     this.dragView = { x: this.viewX, y: this.viewY };
   }
@@ -1401,6 +1420,7 @@ class SimpleTileMap {
   }
 
   _onWheel(e) {
+    if (this._isInteractiveUI(e.target)) return;
     e.preventDefault();
     const oldZ = this.viewZ;
     const delta = e.deltaY < 0 ? 1 : -1;
@@ -1420,6 +1440,81 @@ class SimpleTileMap {
 
     this.update();
   }
+
+  _getTouchDistance(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  _onTouchStart(e) {
+    if (this._isInteractiveUI(e.target)) return;
+    if (e.touches.length === 1) {
+      // Один палец: перетаскивание
+      this.isDragging = true;
+      this.isPinching = false;
+      this.dragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      this.dragView = { x: this.viewX, y: this.viewY };
+    } else if (e.touches.length === 2) {
+      // Два пальца: щипок
+      this.isDragging = false;
+      this.isPinching = true;
+      this.pinchStartDist = this._getTouchDistance(e.touches);
+      const rect = this.container.getBoundingClientRect();
+      this.pinchCenter = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top
+      };
+      this.pinchStartView = { x: this.viewX, y: this.viewY, z: this.viewZ };
+    }
+    e.preventDefault();
+  }
+
+  _onTouchMove(e) {
+    if (!this.isDragging && !this.isPinching) return;
+    e.preventDefault();
+    const rect = this.container.getBoundingClientRect();
+
+    if (e.touches.length === 1 && this.isDragging) {
+      // Перетаскивание одним пальцем
+      this.viewX = this.dragView.x - (e.touches[0].clientX - this.dragStart.x) / this.tileSize;
+      this.viewY = this.dragView.y - (e.touches[0].clientY - this.dragStart.y) / this.tileSize;
+      this.update('touchmove');
+    } 
+    else if (e.touches.length === 2 && this.isPinching) {
+      // Щипок двумя пальцами
+      const currentDist = this._getTouchDistance(e.touches);
+      const scale = currentDist / this.pinchStartDist;
+      
+      // Определяем дискретный шаг зума
+      const zoomDelta = Math.round(Math.log2(scale));
+      const newZoom = Math.max(this.minZoom, Math.min(this.maxZoom, this.pinchStartView.z + zoomDelta));
+
+      if (newZoom !== this.viewZ) {
+        // Текущий центр пальцев
+        const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+        const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+
+        const offX = (cx - rect.width / 2) / this.tileSize;
+        const offY = (cy - rect.height / 2) / this.tileSize;
+
+        const viewScale = Math.pow(2, newZoom - this.pinchStartView.z);
+        this.viewX = (this.pinchStartView.x + offX) * viewScale - offX;
+        this.viewY = (this.pinchStartView.y + offY) * viewScale - offY;
+        this.viewZ = newZoom;
+        this.update('touchmove');
+      }
+    }
+  }
+
+  _onTouchEnd(e) {
+	let wasMoved = this.isDragging || this.isPinching;
+	if (wasMoved && this.dragStart.x == e.clientX && this.dragStart.y == e.clientY) wasMoved = false; 
+    if (e.touches.length < 2) this.isPinching = false;
+    if (e.touches.length === 0) this.isDragging = false;
+	this.update(wasMoved ? 'touchend' : 'touch'); 
+  }
+
 }
 
 </script>
