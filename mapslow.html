@@ -5,7 +5,7 @@
 	<meta name="author" content="https://github.com/dkxce">
 	<link rel="author" href="https://github.com/dkxce">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>&copy; dkxce simple js fast tile map</title>
+	<title>&copy; dkxce simple js tile map</title>
 	<style>
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body { display: flex; justify-content: center; align-items: center; height: 100vh; background: #1a1a1a; font-family: system-ui, -apple-system, sans-serif; }
@@ -171,9 +171,6 @@ class SimpleTileMap {
     // Детект браузера для специфичных фиксов //
     this._isFirefox = navigator.userAgent.includes('Firefox');
 
-    // Массив тайлов
-	this.tiles = new Map();
-
 	// Массив оверлеев (круги, полигоны, точки, хинты, kml) //
     this.overlays = [];
 	this.hints = [];
@@ -190,6 +187,7 @@ class SimpleTileMap {
     this._initProviderSwitcher();
     this._initLayers();
     this._bindEvents();    
+	this.imgs = [];
 	this.isPinching = false;
     this.pinchStartDist = 0;
     this.pinchCenter = { x: 0, y: 0 };
@@ -240,25 +238,14 @@ class SimpleTileMap {
 		if(image == null) return;
 		if (!Array.isArray(layers)) layers = [layers];
 		
-		if (image.overlays == undefined) 
-		{
-			image.overlays = new Array(layers.length).fill(0);		
-			layers.forEach((element, index, array) => {
-			  let newImg = image.cloneNode(true);
-			  newImg.src = element;
-			  newImg.style.zIndex = index + 1;
-			  newImg.style.opacity = overlayOpacity;
-			  this.tileLayer.appendChild(newImg);
-			  image.overlays[index] = newImg;
-			});			
-		}
-		else
-		{
-			layers.forEach((element, index, array) => {
-			  image.overlays[index].style.left = image.style.left;
-			  image.overlays[index].style.top = image.style.top;
-			});			
-		};
+		layers.forEach((element, index, array) => {
+		  let newImg = image.cloneNode(true);
+		  newImg.src = element;
+		  newImg.style.zIndex = index + 1;
+		  newImg.style.opacity = overlayOpacity;
+		  this.imgs.push({img:newImg,left:Math.round(newImg.style.left),top:Math.round(newImg.style.top)});
+		  this.tileLayer.appendChild(newImg);
+		});			
 	}
 
    // Асинхронное наложение слоев тайлов путем canvas draw //
@@ -312,10 +299,9 @@ class SimpleTileMap {
 	  OSMHot: 		{name: 'OSM Hot', tileUrl: 'http://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OSM'},
 	  OpenVkarte: 	{name: 'OpenVkarte', tileUrl: 'http://tile.xn--pnvkarte-m4a.de/tilegen/{z}/{x}/{y}.png', attr: 'Tiles by © OpenVkarte'},
 	  OpenTopoMap: 	{name: 'OpenTopoMap', tileUrl: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', subdomains: ['a', 'b', 'c'], attr: 'Tiles by © OpenTopoMap'},
-	  Wikimapia: 	{name: 'Wikimapia', tileUrl: 'http://localhost/', attr: 'Tiles by © Wikimapia', customTileFunc: (z,x,y,i,r) => {
-					 return r ? "http://i" + ((x % 4) + (y % 4)*4) + ".wikimapia.org/?lng=1&" + 'x=' + x + '&y='+y+'&zoom='+z : null; }},
-	  MSMapTiles: 	{name: 'MSMap', tileUrl: 'http://localhost/', attr: 'Tiles by © Microsoft', customTileFunc: (z,x,y,i,r) => {
-						if (!r) return null;
+	  Wikimapia: 	{name: 'Wikimapia', tileUrl: 'http://localhost/', attr: 'Tiles by © Wikimapia', customTileFunc: (z,x,y,i) => {
+					 return "http://i" + ((x % 4) + (y % 4)*4) + ".wikimapia.org/?lng=1&" + 'x=' + x + '&y='+y+'&zoom='+z; }},
+	  MSMapTiles: 	{name: 'MSMap', tileUrl: 'http://localhost/', attr: 'Tiles by © Microsoft', customTileFunc: (z,x,y,i) => {
 						var imageSuffix = '.png';
 						var mapTypeString = "r"; // r/a/h - png/jpeg/jpeg
 						var mapTilesVersion = 22;
@@ -324,8 +310,7 @@ class SimpleTileMap {
 						sTile = sTile.substring(sTile.length - z, sTile.length);
 						return 'http://' + mapTypeString + sTile.substring(sTile.length-1, sTile.length) + '.ortho.tiles.virtualearth.net/tiles/' + mapTypeString + sTile + imageSuffix + '?g=' + mapTilesVersion; 
 					}},
-	  MSMapSat: 	{name: 'MSMap Sat', tileUrl: 'http://localhost/', attr: 'Tiles by © Microsoft', customTileFunc: (z,x,y,i,r) => {
-						if (!r) return null;
+	  MSMapSat: 	{name: 'MSMap Sat', tileUrl: 'http://localhost/', attr: 'Tiles by © Microsoft', customTileFunc: (z,x,y,i) => {
 						var imageSuffix = '.jpeg';
 						var mapTypeString = "h"; // r/a/h - png/jpeg/jpeg
 						var mapTilesVersion = 22;
@@ -340,7 +325,7 @@ class SimpleTileMap {
 	  Google: 		{name: 'Google', tileUrl: 'http://{s}.google.com/vt/lyrs=m@177000000&hl=ru&src=app&x={x}&s=&y={y}&z={z}&s=Ga', subdomains: ['mts0','mts1'], attr: 'Tiles by © Google'},
 	  GoogleSat: 	{name: 'Google Sat', tileUrl: 'http://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', subdomains: ['0','1','2','3'], attr: 'Tiles by © Google'},
 	  GoogleHyb: 	{name: 'Google Hyb', tileUrl: 'http://mt{s}.google.com/vt/lyrs=s,m&hl=iw&x={x}&y={y}&z={z}', subdomains: ['0','1','2','3'], attr: 'Tiles by © Google'},
-	  GoogleTraff:	{name: 'Google Traffic', tileUrl: 'http://localhost/', attr: 'Tiles by © Google', customTileFunc: (z,x,y,i,r) => { 
+	  GoogleTraff:	{name: 'Google Traffic', tileUrl: 'http://localhost/', attr: 'Tiles by © Google', customTileFunc: (z,x,y,i) => { 
 						let subdomains = ['mts0','mts1'];
 						let s = subdomains[Math.floor(Math.random() * subdomains.length)];
 						const layer0 = `http://${s}.google.com/vt/lyrs=m@177000000&hl=ru&src=app&x=${x}&s=&y=${y}&z=${z}&s=Ga`;
@@ -354,23 +339,23 @@ class SimpleTileMap {
 	  ESRI: 		{name: 'ESRI', tileUrl: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}.png', attr: 'Tiles by © ESRI'},
 	  ESRISat: 		{name: 'ESRI Sat', tileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}.png', attr: 'Tiles by © ESRI'},
 	  ScanEx: 		{name: 'ScanEx', tileUrl: 'http://maps.kosmosnimki.ru/TileService.ashx?Request=gettile&LayerName=04C9E7CE82C34172910ACDBF8F1DF49A&apikey=7BDJ6RRTHH&crs=epsg:3857&z={z}&x={x}&y={y}', attr: 'Tiles by © ScanEx'},  
-	  TilesXY: 		{name: 'Tiles XY', tileUrl: 'http://localhost/', attr: 'Tiles by © dkxce', customTileFunc: (z,x,y,i,r) => { return r ? this._generateTextImageSVG(`X${x} Y${y}\r\n© by dkxce\r\n2026`, {fontSize:12}) : null; }},
-	  ImageOvrl:	{name: 'Image Overlay', tileUrl: 'http://localhost/', attr: 'Tiles by © MTBMap', customTileFunc: (z,x,y,i,r) => { 
+	  TilesXY: 		{name: 'Tiles XY', tileUrl: 'http://localhost/', attr: 'Tiles by © dkxce', customTileFunc: (z,x,y,i) => { return this._generateTextImageSVG(`X${x} Y${y}\r\n© by dkxce\r\n2026`, {fontSize:12});}},
+	  ImageOvrl:	{name: 'Image Overlay', tileUrl: 'http://localhost/', attr: 'Tiles by © MTBMap', customTileFunc: (z,x,y,i) => { 
 						const layer0 = `https://tile.mtbmap.cz/mtbmap_tiles/${z}/${x}/${y}.png`;
-						const layer1 = r ? this._generateTextImageSVG(`X${x} Y${y}\r\nMTBMap`, {fontSize:12} ) : null;
+						const layer1 = this._generateTextImageSVG(`X${x} Y${y}\r\nMTBMap`, {fontSize:12} );
 						this._renderOverlayImages([layer1], i, {overlayOpacity:0.75});
 						return layer0; // возвращаем нижний слой
 					}},
-	  CanvasOvrl:	{name: 'Canvas Overlay', tileUrl: 'http://localhost/', attr: 'Tiles by © MTBMap', onMoveRending: false, customTileFunc: (z,x,y,i,r) => { 
+	  CanvasOvrl:	{name: 'Canvas Overlay', tileUrl: 'http://localhost/', attr: 'Tiles by © MTBMap', onMoveRending: false, customTileFunc: (z,x,y,i) => { 
 						const layer1 = `https://tile.mtbmap.cz/mtbmap_tiles/${z}/${x}/${y}.png`;
-						const layer2 = r ? this._generateTextImageSVG(`X${x} T${y}\r\nMTBMap\r\nCANVAS RENDER `, {fontSize:12,fontColor:'red'} ) : null;
-						if (r) this._drawOverlayImages([layer1,layer2], i, { overlayOpacity: 0.9 });
+						const layer2 = this._generateTextImageSVG(`X${x} T${y}\r\nMTBMap\r\nCANVAS RENDER `, {fontSize:12,fontColor:'red'} );
+						this._drawOverlayImages([layer1,layer2], i, { overlayOpacity: 0.9 });
 						return layer1; // возвращаем нижний слой
 					}},
-	  DelayOvrl:	{name: 'Delay Overlay', tileUrl: 'http://localhost/', attr: 'Tiles by © MTBMap', onMoveRending: false, customTileFunc: (z,x,y,i,r) => { 
+	  DelayOvrl:	{name: 'Delay Overlay', tileUrl: 'http://localhost/', attr: 'Tiles by © MTBMap', onMoveRending: false, customTileFunc: (z,x,y,i) => { 
 						const layer1 = `https://tile.mtbmap.cz/mtbmap_tiles/${z}/${x}/${y}.png`;
-						const layer2 = r ? this._generateTextImageSVG(`X${x} T${y}\r\nMTBMap\r\nCANVAS RENDER `, {fontSize:12,fontColor:'red'} ) : null;
-						if (r) this._drawOverlayImages([layer1,layer2], i, { overlayOpacity: 0.9 });
+						const layer2 = this._generateTextImageSVG(`X${x} T${y}\r\nMTBMap\r\nCANVAS RENDER `, {fontSize:12,fontColor:'red'} );
+						this._drawOverlayImages([layer1,layer2], i, { overlayOpacity: 0.9 });
 						return this.loadingTile; // возвращаем тайл загрузки
 					}},
 	  EMPTY: 		{name: 'EMPTY', tileUrl: this.emptyTile, attr: 'Tiles by © dkxce'},	  
@@ -484,14 +469,11 @@ class SimpleTileMap {
   }
   
   // Получение ссылки на тайл //
-  _buildTileUrl(z, x, y, img, reload) {  
+  _buildTileUrl(z, x, y, i = null) {  
     if (this.customTileFunc != null)
-	{
-		return this.customTileFunc(z, x, y, img, reload);
-	}
+		return this.customTileFunc(z, x, y, i);
 	else
 	{
-		if(!reload) return null;
 		let url = this.tileUrl.replaceAll('{z}', z).replaceAll('{x}', x).replaceAll('{y}', y);
 		if (url.includes('{s}') && this.subdomains?.length > 0)
 		  url = url.replaceAll('{s}', this._getRandomSubdomain());
@@ -595,8 +577,7 @@ class SimpleTileMap {
 	this.minZoom    = config.minZoom ?? 3;
 	this.maxZoom    = config.maxZoom ?? 19;	
 	this.customTileFunc = config.customTileFunc ?? null;
-	this.onMoveRending  = config.onMoveRending ?? true;	
-	this._resetTiles();
+	this.onMoveRending  = config.onMoveRending ?? true;
 
     const attrEl = document.getElementById('attribution');
     if (this.attr) {
@@ -626,19 +607,10 @@ class SimpleTileMap {
       });
     }
   }
-  
-  // Сброс тайлов слоя //
-  _resetTiles() {
-	this.tiles = new Map();
-	this.tileLayer.innerHTML = '';
-  }
 
   // Рендер тайлов //
   _renderTiles() {
-    // this._resetTiles(); // - Намного дольше и с лагами
-	
-	const tileBuffer = 1;
-	const visible = new Set();
+    this.tileLayer.innerHTML = '';
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
 
@@ -647,54 +619,46 @@ class SimpleTileMap {
     const halfX = countX / 2;
     const halfY = countY / 2;
 
-    let minX = Math.max(Math.floor(this.viewX - halfX), 0) - tileBuffer;
-    let maxX = Math.min(Math.ceil(this.viewX + halfX), (1 << this.viewZ) - 1) + tileBuffer;
-    let minY = Math.max(Math.floor(this.viewY - halfY), 0) - tileBuffer;
-    let maxY = Math.min(Math.ceil(this.viewY + halfY), (1 << this.viewZ) - 1) +  tileBuffer;
+    let minX = Math.max(Math.floor(this.viewX - halfX), 0);
+    let maxX = Math.min(Math.ceil(this.viewX + halfX), (1 << this.viewZ) - 1);
+    let minY = Math.max(Math.floor(this.viewY - halfY), 0);
+    let maxY = Math.min(Math.ceil(this.viewY + halfY), (1 << this.viewZ) - 1);
 
     for (let tx = minX; tx <= maxX; tx++) {
       for (let ty = minY; ty <= maxY; ty++) {
-		const key = `${this.viewZ}_${tx}_${ty}`;
-        visible.add(key);
-		
-		// Вычисляем позицию тайла
+        const img = document.createElement('img');
+        img.className = 'tile';
+		img.setAttribute('width', this.tileSize);
+        img.setAttribute('height', this.tileSize);										         
+        img.alt = '';
+        img.draggable = false;
+		img.decoding = 'sync';
+        
+        // Вычисляем позицию
         const leftPx = (tx - this.viewX) * this.tileSize + w / 2;
         const topPx = (ty - this.viewY) * this.tileSize + h / 2;
-	    
-		let img = null;			
-		if (this.tiles.has(key)) {		  
-			img = this.tiles.get(key);			
-		} else {
-		    img = document.createElement('img');
-			img.className = 'tile';
-			img.setAttribute('width', this.tileSize);
-			img.setAttribute('height', this.tileSize);										         
-			img.alt = '';
-			img.draggable = false;
-			img.decoding = 'sync';
-			img.style.width = this.tileSize + 'px';
-			img.style.height = this.tileSize + 'px';
-		};		
-		// Задаем позицию тайла
-		img.style.left = Math.round(leftPx) + 'px';
-		img.style.top  = Math.round(topPx) + 'px';
-		if (this.tiles.has(key)) {	
-			this._buildTileUrl(this.viewZ, tx, ty, img, false);	
-		} else {
-			img.src = this._buildTileUrl(this.viewZ, tx, ty, img, true);			
-			this.tileLayer.appendChild(img);			
-			this.tiles.set(key, img);
-		};
+        
+        // ФИКС: разное округление для разных браузеров
+        if (this._isFirefox) {
+          // Firefox: bitwise-округление гарантирует целочисленные координаты
+          img.style.left = (leftPx | 0) + 'px';
+          img.style.top  = (topPx | 0) + 'px';
+          // Дополнительный атрибут для старых версий Firefox
+          img.setAttribute('mozPreserveAspectRatio', 'none');
+        } else {
+          // Chromium/Safari: стандартное округление
+          img.style.left = Math.round(leftPx) + 'px';
+          img.style.top  = Math.round(topPx) + 'px';
+        }
+        
+        img.style.width = this.tileSize + 'px';
+        img.style.height = this.tileSize + 'px';
+		img.src = this._buildTileUrl(this.viewZ, tx, ty, img);
+        
+		this.imgs.push({img:img,left:Math.round(leftPx),top:Math.round(topPx)});
+        this.tileLayer.appendChild(img);
       }
-    };
-	
-	for (const [key, tile] of this.tiles) {
-	  if (!visible.has(key)) {		
-		if (tile.overlays !== undefined) tile.overlays.forEach((element, index, array) => tile.overlays[index].remove());			
-		tile.remove();
-		this.tiles.delete(key);
-	  }
-	};
+    }
   }
 
   // Рендер круга //
@@ -1357,7 +1321,6 @@ class SimpleTileMap {
   /* // Публичные методы // Установить url тайлов карты // */
   setTileUrl(url) {
     this.tileUrl = url;
-	this._resetTiles();
 	this._activateTileProvider();
     this.update();
   }
