@@ -69,6 +69,7 @@ class SimpleTileMap {
   
   /** Конструктор
 	параметры вызова:
+	    - loadFromQuery - ?lat=&lon=&zoom=&provider=&markerText=
 		- lat, lon, zoom, provider
 		- markerLat, markerLon, markerText, showMarker, onMarkerClick
 		- showZoomLevels, showProviders, showInformation
@@ -115,6 +116,18 @@ class SimpleTileMap {
 	// Проверка контейнера //
     this.container = typeof container === 'string' ? document.querySelector(container) : container;
     if (!this.container) throw new Error('Контейнер карты не найден');
+
+	if (options.loadFromQuery ?? false) {
+		const params = new URLSearchParams(window.location.search);
+		try { options.lat = parseFloat(params.get('lat') ?? 55.89); } catch (e) {};
+		try { options.lon = parseFloat(params.get('lon') ?? 37.69); } catch (e) {};
+		try { options.zoom = parseInt(params.get('zoom') ?? 12); } catch (e) {};
+		try { options.provider = params.get('provider') ?? 'DblGIS'; } catch (e) {};
+		
+		try { options.markerLat = parseFloat(params.get('markerLat') ?? options.lat); } catch (e) {};
+		try { options.markerLon = parseFloat(params.get('markerLon') ?? options.lon); } catch (e) {};
+		try { options.markerText = atob(params.get('text') ?? ''); options.showMarker = options.markerText.length > 0; } catch (e) {}; // <- base64		
+	};
 
     // Координаты карты //
     this.realLat  = this.lat  = options.lat ?? 55.89; // <- Широта  WGS-84
@@ -234,21 +247,22 @@ class SimpleTileMap {
 	}
 	 
    // Синхронное наложение слоев тайлов путем добавления img //
-  _renderOverlayImages = async function (layers, /*исходный тайл нулевого уровня*/ image = null, options = {}) {
+  _renderOverlayImages = async function (layers, /*исходный тайл нулевого уровня*/ image = null, reload = true, options = {}) {
 	  const { overlayOpacity = 1.0 } = options;
 		if(layers == null) return;
 		if(image == null) return;
 		if (!Array.isArray(layers)) layers = [layers];
 		
-		if (image.overlays == undefined) 
+		if (image.overlays == undefined || reload) 
 		{
+			if(reload) this._clearImgOverlays(image);
 			image.overlays = new Array(layers.length).fill(0);		
 			layers.forEach((element, index, array) => {
 			  let newImg = image.cloneNode(true);
 			  newImg.src = element;
 			  newImg.style.zIndex = index + 1;
 			  newImg.style.opacity = overlayOpacity;
-			  this.tileLayer.appendChild(newImg);
+			  this.tileLayer.appendChild(newImg);			  
 			  image.overlays[index] = newImg;
 			});			
 		}
@@ -262,14 +276,14 @@ class SimpleTileMap {
 	}
 
    // Асинхронное наложение слоев тайлов путем canvas draw //
-  _drawOverlayImages = async function (layers, /*исходный тайл нулевого уровня*/ image = null, options = {}) {
+  _drawOverlayImages = async function (layers, /*исходный тайл нулевого уровня*/ image = null, reload = true, options = {}) {
 	  const {	
 		width = 256, height = 256, overlayOpacity = 1.0, // Прозрачность верхнего слоя (0..1)
 		crossOrigin = 'anonymous' // CORS-режим для внешних URL
 	  } = options;
 	  
-	  if(layers == null) return;
-	  if(image == null) return;
+	  if (layers == null) return;
+	  if (image == null) return;
 	  if (!Array.isArray(layers)) layers = [layers];
 
 	  const loadImg = (src) => new Promise((resolve, reject) => {
@@ -345,7 +359,7 @@ class SimpleTileMap {
 						let s = subdomains[Math.floor(Math.random() * subdomains.length)];
 						const layer0 = `http://${s}.google.com/vt/lyrs=m@177000000&hl=ru&src=app&x=${x}&s=&y=${y}&z=${z}&s=Ga`;
 						const layer1 = `http://${s}.google.com/vt?hl=ru&src=app&lyrs=m@177000000,traffic|seconds_into_week:-1&x=${x}&s=&y=${y}&z=${z}&style=15`;
-						this._renderOverlayImages(layer1, i);
+						this._renderOverlayImages(layer1, i, r);
 						return layer0;
 					}},
 	  DblGIS: 		{name: '2GIS', tileUrl: 'https://tile{s}.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1.1', subdomains: ['0','1','2','3'], attr: 'Tiles by © 2GIS'},
@@ -358,19 +372,19 @@ class SimpleTileMap {
 	  ImageOvrl:	{name: 'Image Overlay', tileUrl: 'http://localhost/', attr: 'Tiles by © MTBMap', customTileFunc: (z,x,y,i,r) => { 
 						const layer0 = `https://tile.mtbmap.cz/mtbmap_tiles/${z}/${x}/${y}.png`;
 						const layer1 = r ? this._generateTextImageSVG(`X${x} Y${y}\r\nMTBMap`, {fontSize:12} ) : null;
-						this._renderOverlayImages([layer1], i, {overlayOpacity:0.75});
+						this._renderOverlayImages([layer1], i, r, {overlayOpacity:0.75});
 						return layer0; // возвращаем нижний слой
 					}},
 	  CanvasOvrl:	{name: 'Canvas Overlay', tileUrl: 'http://localhost/', attr: 'Tiles by © MTBMap', onMoveRending: false, customTileFunc: (z,x,y,i,r) => { 
 						const layer1 = `https://tile.mtbmap.cz/mtbmap_tiles/${z}/${x}/${y}.png`;
 						const layer2 = r ? this._generateTextImageSVG(`X${x} T${y}\r\nMTBMap\r\nCANVAS RENDER `, {fontSize:12,fontColor:'red'} ) : null;
-						if (r) this._drawOverlayImages([layer1,layer2], i, { overlayOpacity: 0.9 });
+						if (r) this._drawOverlayImages([layer1,layer2], i, r, { overlayOpacity: 0.9 });
 						return layer1; // возвращаем нижний слой
 					}},
 	  DelayOvrl:	{name: 'Delay Overlay', tileUrl: 'http://localhost/', attr: 'Tiles by © MTBMap', onMoveRending: false, customTileFunc: (z,x,y,i,r) => { 
 						const layer1 = `https://tile.mtbmap.cz/mtbmap_tiles/${z}/${x}/${y}.png`;
 						const layer2 = r ? this._generateTextImageSVG(`X${x} T${y}\r\nMTBMap\r\nCANVAS RENDER `, {fontSize:12,fontColor:'red'} ) : null;
-						if (r) this._drawOverlayImages([layer1,layer2], i, { overlayOpacity: 0.9 });
+						if (r) this._drawOverlayImages([layer1,layer2], i, r, { overlayOpacity: 0.9 });
 						return this.loadingTile; // возвращаем тайл загрузки
 					}},
 	  EMPTY: 		{name: 'EMPTY', tileUrl: this.emptyTile, attr: 'Tiles by © dkxce'},	  
@@ -632,12 +646,11 @@ class SimpleTileMap {
 	this.tiles = new Map();
 	this.tileLayer.innerHTML = '';
   }
-
+  
   // Рендер тайлов //
   _renderTiles() {
     // this._resetTiles(); // - Намного дольше и с лагами
-	
-	const tileBuffer = 1;
+				
 	const visible = new Set();
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
@@ -647,6 +660,7 @@ class SimpleTileMap {
     const halfX = countX / 2;
     const halfY = countY / 2;
 
+	const tileBuffer = 1;
     let minX = Math.max(Math.floor(this.viewX - halfX), 0) - tileBuffer;
     let maxX = Math.min(Math.ceil(this.viewX + halfX), (1 << this.viewZ) - 1) + tileBuffer;
     let minY = Math.max(Math.floor(this.viewY - halfY), 0) - tileBuffer;
@@ -690,11 +704,15 @@ class SimpleTileMap {
 	
 	for (const [key, tile] of this.tiles) {
 	  if (!visible.has(key)) {		
-		if (tile.overlays !== undefined) tile.overlays.forEach((element, index, array) => tile.overlays[index].remove());			
+		this._clearImgOverlays(tile);		
 		tile.remove();
 		this.tiles.delete(key);
 	  }
 	};
+  }
+  
+  _clearImgOverlays(tile)  {
+		if (tile.overlays !== undefined) tile.overlays.forEach((element, index, array) => tile.overlays[index].remove());
   }
 
   // Рендер круга //
@@ -1559,6 +1577,7 @@ class SimpleTileMap {
 <script id="initialization"> /* ========================= Инициализация ========================= */
 
 	// Test: ?lat=55.89&lon=37.69&zoom=13&text=SVA6IDIxNy4xNS4xMzUuMTA3  //
+	// const map = new SimpleTileMap('#map-container', {loadFromQuery: true}); //
 
 	// Определение и загрузка параметров из query //
 	const params = new URLSearchParams(window.location.search);
@@ -1571,6 +1590,7 @@ class SimpleTileMap {
 	try { provider = params.get('provider') ?? 'DblGIS'; } catch (e) {};
 
 	// Инициализация карты //
+    // const map = new SimpleTileMap('#map-container', {loadFromQuery: true});
 	const map = new SimpleTileMap('#map-container', {
 		lat: lt,               // широта 
 		lon: ln,               // долгота

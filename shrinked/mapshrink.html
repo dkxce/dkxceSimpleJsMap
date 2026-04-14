@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+	<meta charset="UTF-8">
+	<meta name="author" content="https://github.com/dkxce">
+	<link rel="author" href="https://github.com/dkxce">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>&copy; dkxce shrink fast tile map</title>
+	<link rel="stylesheet" href="map.css"/>
+	<script src="map.js"></script>
+</head>
+<body>
+	<div id="map-container">
+		<div class="zoom-switcher" id="zoom-switcher"></div>
+		<div class="provider-switcher" id="provider-switcher"></div>
+		<div class="attribution" id="attribution"></div>		
+		<div class="information" id="information"></div>		
+	</div>
+</body>
+
+<script id="initialization"> 	
+	const map = new SimpleTileMap('#map-container', {loadFromQuery: true, showProviders: true, showZoomLevels: true, showInformation: true});		
+</script>
+
+</html>
