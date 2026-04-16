@@ -127,8 +127,9 @@ class SimpleTileMap {
 		try { options.markerLat = parseFloat(params.get('markerLat') ?? options.lat); } catch (e) {};
 		try { options.markerLon = parseFloat(params.get('markerLon') ?? options.lon); } catch (e) {};
 		try { options.markerText = atob(params.get('text') ?? ''); options.showMarker = options.markerText.length > 0; } catch (e) {}; // <- base64		
-	};
-
+	};	
+	try { this.kml = []; params.getAll('kml').forEach((e) => this.kml.push(atob(e))); } catch (e) { };
+	
     // Координаты карты //
     this.realLat  = this.lat  = options.lat ?? 55.89; // <- Широта  WGS-84
     this.realLon  = this.lon  = options.lon ?? 37.69; // <- Долгота WGS-84
@@ -207,6 +208,9 @@ class SimpleTileMap {
     this.pinchStartDist = 0;
     this.pinchCenter = { x: 0, y: 0 };
     this.pinchStartView = { x: 0, y: 0, z: 0 };
+	
+	// KML from Query
+	this.kml.forEach((e) => this.addKML(e));
 	
 	// Определение провайдера //
 	if (this.providerKey == 'OSM'|| this.providerKey == null || this.providerKey == '' || this.providerKey == 'custom') {
